@@ -4,6 +4,22 @@
         <title>TangoDisplay</title>
         <link>https://github.com/richardsladetdj-creator/TangoDisplay</link>
         <item>
+            <title>Version 3.30.0</title>
+            <pubDate>Tue, 18 Aug 2026 13:44:08 +0000</pubDate>
+            <sparkle:version>109</sparkle:version>
+            <sparkle:shortVersionString>3.30.0</sparkle:shortVersionString>
+            <description><![CDATA[
+                <ul>
+                    <li>Skip gap after manual stop: new option in Settings &gt; Player &gt; Auto-gap. When a track is stopped before it ends, the next track you start plays immediately with no silence preroll. Covers the transport stop button and Fade &amp; Stop. Off by default, so existing behaviour is unchanged.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/richardsladetdj-creator/TangoDisplay/releases/download/v3.30.0/TangoDisplay-v3.30.0-universal.zip"
+                sparkle:edSignature="HPzu/Qa1w/VxOGtXJHuFHJDeaEIMe5NIYtWg5TyBjO5S4erC68qcxeTRcLTsvhkCz9aar4vOZePjdXHflQPYBQ=="
+                length="6649663"
+                type="application/zip"/>
+        </item>
+        <item>
             <title>Version 3.29.1</title>
             <pubDate>Thu, 16 Jul 2026 15:39:39 +0000</pubDate>
             <sparkle:version>108</sparkle:version>
