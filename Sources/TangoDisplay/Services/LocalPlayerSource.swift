@@ -129,6 +129,7 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
     private var autoGapAnalysisTask: Task<Void, Never>?
     private var audioStartSampleTime: AVAudioFramePosition = 0
     private var silencePending: Bool = false
+    private var manualStopPending = false             // set by a user-initiated stop; consumed by the next loadEntry
 
     // MARK: - Private — loudness analysis
 
@@ -616,6 +617,9 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
             playerNode.play()
             isActivePlaying = true
         } else if let id = currentEntryID {
+            // Resuming the track that was stopped: the pending stop is spent, so its
+            // natural end must not suppress the following track's gap.
+            manualStopPending = false
             setlist.markPlaying(id: id)
             seekTo(0) { [weak self] in
                 self?.playerNode.play()
@@ -626,6 +630,7 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
     }
 
     func pause() {
+        manualStopPending = true
         scheduleGeneration += 1
         playerNode.stop()
         isActivePlaying = false
@@ -656,6 +661,7 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
     }
 
     func stopTrack() {
+        manualStopPending = true
         if let id = currentEntryID, !earlyMarkedEntryIDs.contains(id), !currentEntryIsPlayed() {
             setlist.markQueued(id: id)
         }
@@ -845,7 +851,9 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
             var autoGapApplied = false
             let autoGapIgnored = entry.autoGapIgnored(isFirstTrack: isFirstTrack,
                                                       ignoreFirstTrack: settings.autoGapIgnoreFirstTrack)
-            if !bypassAutoGap && !autoGapIgnored && settings.autoGapEnabled {
+            // A manual stop already created the gap; don't add a second one on the next start.
+            let skipForManualStop = settings.autoGapSkipAfterManualStop && manualStopPending
+            if !bypassAutoGap && !skipForManualStop && !autoGapIgnored && settings.autoGapEnabled {
                 // Use the analysis prepared for this exact (outgoing, incoming) pair.
                 // currentEntryID still holds the outgoing track here (set to the new
                 // entry below). A stale/mismatched pair → nil → conservative full target.
@@ -878,6 +886,7 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
             }
             setlist.setAutoGapApplied(id: entry.id, applied: autoGapApplied)
             preparedAutoGap = nil
+            manualStopPending = false
 
             if entry.trimStartSeconds != nil || entry.trimEndSeconds != nil {
                 // Trim: play only [start, end]. Repeat re-loads this entry, so it re-schedules

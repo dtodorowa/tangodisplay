@@ -218,6 +218,12 @@ Auto-gap analyses the silence at track boundaries and schedules a silent preroll
 
 When **Skip gap before first track** is enabled (the default), the opening track of the setlist starts immediately with no silence preroll — the gap only applies between consecutive tracks. Disable this if you want the same treatment from the very first song.
 
+### Skip Gap After Manual Stop
+
+When **Skip gap after manual stop** is enabled, stopping a track before it ends means the next track you start plays immediately with no silence preroll — the break while you were between tracks already provided the gap. This covers the transport stop button and Fade & Stop. Off by default.
+
+Stopping a track and then resuming that same track does not count: when it later ends normally, the following track gets its usual auto-gap.
+
 ### Per-Track Override
 
 Right-click any queued track row and select **Ignore Auto-gap before this Track** to exempt that individual track. The option becomes **Resume Auto-gap** when already set; click it again to re-enable. This lets you keep auto-gap active globally while skipping it for specific tracks (e.g. a track you want to follow immediately after its predecessor).
@@ -237,7 +243,7 @@ Three places in the UI reflect auto-gap state:
 | **Setlist footer dot** | Green dot + "Auto-gap: 4.0s" (live duration) = feature active. Grey dot + "Auto-gap: off" = feature disabled. |
 | **Timer toolbar button** | Opens the Auto-gap popover for instant duration changes. Disabled when auto-gap is off. |
 | **Filled green wave icon** on a track row | Auto-gap silence was successfully scheduled before this track |
-| **Outlined grey wave icon** on a track row | Auto-gap was skipped or ignored for this track (first track with "Skip gap before first track" on, or per-track override active) |
+| **Outlined grey wave icon** on a track row | Auto-gap was skipped or ignored for this track (first track with "Skip gap before first track" on, or per-track override active). A skip caused by "Skip gap after manual stop" is not shown here — that decision is only made at the moment the next track starts. |
 | *(no icon)* | Auto-gap not applicable to this track |
 
 ---
@@ -736,6 +742,8 @@ These options appear only when **Built-in Player** is selected.
 **Minimum gap** — the target gap duration in seconds (0.5–5 s, in 0.5-second steps). Default: 4 seconds. Visible only when Auto-gap is enabled.
 
 **Skip gap before first track** — when on (default), the first track in the setlist starts immediately with no silence preroll. The gap applies only between consecutive tracks.
+
+**Skip gap after manual stop** — when enabled, the next track started after a manually stopped track plays immediately with no silence preroll. Applies to the transport stop button and Fade & Stop. Off by default. Visible only when Auto-gap is enabled.
 
 **Auto-fade all cortinas** — when enabled, TangoDisplay automatically fades out cortinas and advances to the next track at the configured play time. Requires cortina detection to be set up via Cortina Rules.
 

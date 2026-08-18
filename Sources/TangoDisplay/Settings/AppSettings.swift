@@ -161,6 +161,10 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(autoGapIgnoreFirstTrack, forKey: kPrefix + "autoGapIgnoreFirstTrack") }
     }
 
+    @Published var autoGapSkipAfterManualStop: Bool {
+        didSet { UserDefaults.standard.set(autoGapSkipAfterManualStop, forKey: kPrefix + "autoGapSkipAfterManualStop") }
+    }
+
     @Published var autoFadeCortinasEnabled: Bool {
         didSet { UserDefaults.standard.set(autoFadeCortinasEnabled, forKey: kPrefix + "autoFadeCortinasEnabled") }
     }
@@ -382,6 +386,7 @@ final class AppSettings: ObservableObject {
         autoGapEnabled = ud.object(forKey: kPrefix + "autoGapEnabled").flatMap { $0 as? Bool } ?? false
         autoGapDuration = ud.object(forKey: kPrefix + "autoGapDuration").flatMap { $0 as? Double } ?? 4.0
         autoGapIgnoreFirstTrack = ud.object(forKey: kPrefix + "autoGapIgnoreFirstTrack").flatMap { $0 as? Bool } ?? true
+        autoGapSkipAfterManualStop = ud.object(forKey: kPrefix + "autoGapSkipAfterManualStop").flatMap { $0 as? Bool } ?? false
         autoFadeCortinasEnabled = ud.object(forKey: kPrefix + "autoFadeCortinasEnabled").flatMap { $0 as? Bool } ?? false
         cortinaPlayTime = ud.object(forKey: kPrefix + "cortinaPlayTime").flatMap { $0 as? Double } ?? 30.0
         cortinaVolumeReductionDb = ud.object(forKey: kPrefix + "cortinaVolumeReductionDb").flatMap { $0 as? Double } ?? 0.0

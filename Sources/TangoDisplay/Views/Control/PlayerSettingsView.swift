@@ -267,6 +267,10 @@ struct PlayerSettingsView: View {
                         Text("The first track in the setlist starts immediately with no silence preroll.")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                        Toggle("Skip gap after manual stop", isOn: $settings.autoGapSkipAfterManualStop)
+                        Text("After you stop a track before it ends, the next track you start plays immediately with no silence preroll.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                     Text("Analyzes silence at track boundaries and adds padding so the gap between tracks meets the minimum. Only adds silence, never removes it.")
                         .font(.caption)
