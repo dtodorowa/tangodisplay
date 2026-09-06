@@ -4,6 +4,25 @@
         <title>TangoDisplay</title>
         <link>https://github.com/richardsladetdj-creator/TangoDisplay</link>
         <item>
+            <title>Version 3.31.0</title>
+            <pubDate>Sun, 06 Sep 2026 11:24:53 +0000</pubDate>
+            <sparkle:version>110</sparkle:version>
+            <sparkle:shortVersionString>3.31.0</sparkle:shortVersionString>
+            <description><![CDATA[
+                <ul>
+                    <li><b>Shellac Restoration:</b> new Restoration button in the Setlist toolbar, with Declick and Dehum filters for 78 rpm transfers, running ahead of the equaliser. Off by default. Per-track overrides (right-click a row) outrank both the master switch and the cortina skip, so a single shellac transfer can be repaired in an otherwise unrestored set.</li>
+                    <li><b>Music start/stop times re-read on every drop:</b> trim markers imported from Music (Song Info &gt; Options) now reflect edits made after TangoDisplay launched, and are imported correctly for iTunes-purchased tracks that arrive as file promises. Previously the times were read once per session and matched by file path.</li>
+                    <li><b>Slider knobs on macOS 26:</b> sliders in the EQ, Balance, ReplayGain and Auto-gap popovers no longer draw a track with no knob until first clicked.</li>
+                    <li><b>Credits:</b> the restoration filters are the DSP cores from <a href="https://github.com/shaforostoff/shellacfilters">ShellacFilters</a> by Nick Shaforostov (MIT), built on the <a href="https://www.airwindows.com">Airwindows</a> framework by Chris Johnson; the Audio Unit wrapper is adapted from <a href="https://github.com/shaforostoff/EmbraceNG">EmbraceNG</a> (&#169; 2024 Ricci Adams, MIT / 1-clause BSD).</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/richardsladetdj-creator/TangoDisplay/releases/download/v3.31.0/TangoDisplay-v3.31.0-universal.zip"
+                sparkle:edSignature="mMJWMq4Ky3pkm+BgFgX3/aO46ZasLT4YrWGho/B1tlUZD47efrMm4G1vuq0zGyJm8h9qz3eUn746LMwaN58XAQ=="
+                length="6878063"
+                type="application/zip"/>
+        </item>
+        <item>
             <title>Version 3.30.0</title>
             <pubDate>Tue, 18 Aug 2026 13:44:08 +0000</pubDate>
             <sparkle:version>109</sparkle:version>
