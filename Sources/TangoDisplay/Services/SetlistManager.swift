@@ -4,6 +4,7 @@ import AudioToolbox
 import Combine
 import Foundation
 import iTunesLibrary
+import os.log
 import TangoDisplayCore
 
 enum SetlistEntryState: String, Codable {
@@ -29,10 +30,11 @@ struct SetlistEntry: Identifiable, Codable {
     var tagColor: TagColor = .none
     var trimStartSeconds: Double? = nil   // nil = play from file start
     var trimEndSeconds: Double? = nil      // nil = play to file end
+    var restorationOverride: Bool? = nil   // nil = follow global rule; true = force skip; false = force apply
     var autoGapApplied: Bool = false   // transient: true while auto-gap preroll is scheduled before this track
 
     enum CodingKeys: String, CodingKey {
-        case id, fileURL, track, state, duration, autoGapOverride, ignoresAutoFade, isLastTanda, isPerformance, repeatTrack, pluginConfigurationID, tagColor, trimStartSeconds, trimEndSeconds
+        case id, fileURL, track, state, duration, autoGapOverride, ignoresAutoFade, isLastTanda, isPerformance, repeatTrack, pluginConfigurationID, tagColor, trimStartSeconds, trimEndSeconds, restorationOverride
         // autoGapApplied is intentionally excluded — reset each playback session
     }
 
@@ -42,6 +44,13 @@ struct SetlistEntry: Identifiable, Codable {
     // Effective "gap skipped before this track". Assumes auto-gap is globally enabled.
     func autoGapIgnored(isFirstTrack: Bool, ignoreFirstTrack: Bool) -> Bool {
         autoGapOverride ?? (ignoreFirstTrack && isFirstTrack)
+    }
+
+    /// Effective "restore this track". `globalDefault` already folds in the master
+    /// switch and the cortina rule; an explicit override outranks both.
+    func restorationApplied(globalDefault: Bool) -> Bool {
+        if let o = restorationOverride { return !o }
+        return globalDefault
     }
 
     init(id: UUID = UUID(), fileURL: URL, track: Track, state: SetlistEntryState = .queued) {
@@ -72,6 +81,7 @@ struct SetlistEntry: Identifiable, Codable {
         tagColor = try c.decodeIfPresent(TagColor.self, forKey: .tagColor) ?? .none
         trimStartSeconds = try c.decodeIfPresent(Double.self, forKey: .trimStartSeconds)
         trimEndSeconds = try c.decodeIfPresent(Double.self, forKey: .trimEndSeconds)
+        restorationOverride = try c.decodeIfPresent(Bool.self, forKey: .restorationOverride)
         autoGapApplied = false
     }
 }
@@ -109,7 +119,8 @@ final class SetlistManager: ObservableObject {
     // anchorID is the UUID of the entry to insert before; nil means append to end.
     // Capturing a UUID (rather than an Int) prevents stale-index bugs when the
     // list mutates during the async metadata read.
-    func insertURLs(_ urls: [URL], before anchorID: UUID?, importMusicTimes: Bool = false) {
+    func insertURLs(_ urls: [URL], before anchorID: UUID?, importMusicTimes: Bool = false,
+                    musicIDs: MusicDragIDs = MusicDragIDs()) {
         let audioURLs = urls.filter { isAudioURL($0) }
         guard !audioURLs.isEmpty else { return }
         // Insert with a filename placeholder first so the row appears instantly;
@@ -124,18 +135,19 @@ final class SetlistManager: ObservableObject {
         insert(placeholders, before: anchorID)   // already calls save() + loadMissingDurations()
         for p in placeholders {
             let id = p.id, url = p.fileURL
+            // Only tracks that came from a Music drag carry a persistent ID, and only they
+            // get trim imported. Nothing here touches the main thread or Music itself.
+            let musicID = importMusicTimes ? musicIDs.persistentID(for: url) : nil
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let track = await SetlistManager.readMetadata(from: url)
-                // Trim from Music's per-track start/stop (Song Info → Options), only when the
-                // built-in player is active. Read off the main actor — the first call forces a
-                // whole-library ITLibrary enumeration that would otherwise hang the drop.
-                let trim = importMusicTimes
-                    ? await SetlistManager.musicTrimAsync(url.path)
-                    : (start: nil, end: nil)
+                // Trim from Music's per-track start/stop (Song Info → Options). Normally
+                // instant — draggingEntered started the scan about a second ago.
+                var trim: (start: Double?, end: Double?)? = nil
+                if let musicID { trim = await SetlistManager.musicTrimAsync(id: musicID) }
                 guard let i = self.entries.firstIndex(where: { $0.id == id }) else { return }
                 self.entries[i].track = track
-                if importMusicTimes {
+                if let trim {
                     self.entries[i].trimStartSeconds = trim.start
                     self.entries[i].trimEndSeconds = trim.end
                 }
@@ -233,6 +245,13 @@ final class SetlistManager: ObservableObject {
     func setAutoGapOverride(id: UUID, ignore: Bool) {
         guard let i = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[i].autoGapOverride = ignore
+        save()
+    }
+
+    /// `skip` of nil clears the override and returns the track to the global rule.
+    func setRestorationOverride(id: UUID, skip: Bool?) {
+        guard let i = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[i].restorationOverride = skip
         save()
     }
 
@@ -559,31 +578,16 @@ final class SetlistManager: ObservableObject {
     // Returns [:] silently if the XML is absent, unreadable, or malformed — no errors thrown.
     private static let iTunesLibrary: [String: iTunesLibraryEntry] = loadITunesLibrary()
 
-    // Music's per-track start/stop (Song Info → Options), keyed by iTunes-media-relative path.
-    // Read via the iTunesLibrary framework so it works without the deprecated "Share Library
-    // XML" preference. Times are milliseconds.
-    // ponytail: whole-library enumeration once per session; if users change Music start/stop
-    // mid-session, add an invalidate-on-drop refresh.
-    private static let musicTrimTimes: [String: (startMs: Int, stopMs: Int, totalMs: Int)] = loadMusicTrimTimes()
-
-    private static func loadMusicTrimTimes() -> [String: (startMs: Int, stopMs: Int, totalMs: Int)] {
-        guard let lib = try? ITLibrary(apiVersion: "1.1") else { return [:] }
-        var result: [String: (startMs: Int, stopMs: Int, totalMs: Int)] = [:]
-        for item in lib.allMediaItems {
-            guard let loc = item.location, loc.isFileURL else { continue }
-            result[iTunesMediaRelativeKey(loc.path)] = (item.startTime, item.stopTime, item.totalTime)
-        }
-        return result
+    nonisolated static func musicTrimAsync(id: String) async -> (start: Double?, end: Double?) {
+        await MusicTrimCache.shared.trim(forID: id)
     }
 
-    static func musicTrim(for path: String) -> (start: Double?, end: Double?) {
-        guard let t = musicTrimTimes[iTunesMediaRelativeKey(path)] else { return (nil, nil) }
-        return musicTrimSeconds(startMs: t.startMs, stopMs: t.stopMs, totalMs: t.totalMs)
-    }
-
-    // Runs the (first-call) whole-library ITLibrary enumeration off the main actor.
-    nonisolated static func musicTrimAsync(_ path: String) async -> (start: Double?, end: Double?) {
-        musicTrim(for: path)
+    // Rescans Music's start/stop table off the main thread. Called when a drag enters the
+    // window — the only moment guaranteed to be after the user's edit in Music and roughly
+    // a second before the drop — and once at launch, where it also triggers the Media
+    // Library TCC prompt.
+    nonisolated static func warmMusicTrims() {
+        Task.detached(priority: .userInitiated) { await MusicTrimCache.shared.refresh() }
     }
 
     // Artist+title → genre lookup for players (e.g. MegaSeg) that expose no file path.
@@ -740,3 +744,58 @@ private let id3GenreNames: [String] = [
     "Christian Rock", "Merengue", "Salsa", "Thrash Metal", "Anime", "JPop",
     "Synthpop",
 ]
+
+private let trimLog = OSLog(subsystem: "com.tangodisplay", category: "musicdrop")
+
+// Music's per-track start/stop (Song Info → Options), keyed by Music's persistent ID.
+// Read via the iTunesLibrary framework so it works without the deprecated "Share Library
+// XML" preference. Times are milliseconds.
+//
+// Keyed by persistent ID, never by file path: on a 24k-track library, reading
+// `item.location` for every track costs ~3.9s of a ~5.3s scan, while the persistent ID
+// plus the three time fields costs ~45ms on top of the unavoidable ~1.35s
+// `allMediaItems`. The IDs to look up come free off the drag pasteboard (`MusicDragIDs`).
+//
+// Rescanned explicitly via `refresh()` when a drag enters the window and at launch — never
+// lazily inside `trim(forID:)`, so a drop never waits on a scan it started itself. Users
+// edit start/stop in Music mid-session, so a once-per-session snapshot goes stale.
+private actor MusicTrimCache {
+    static let shared = MusicTrimCache()
+
+    private let library = try? ITLibrary(apiVersion: "1.1")
+    private var times: [String: (startMs: Int, stopMs: Int, totalMs: Int)] = [:]
+    private var loadedAt: Date?
+
+    // Actor isolation does the coordination: a lookup arriving mid-scan queues behind it
+    // and gets the fresh answer.
+    func trim(forID id: String) -> (start: Double?, end: Double?) {
+        if loadedAt == nil { reload() }
+        guard let t = times[id] else { return (nil, nil) }
+        return musicTrimSeconds(startMs: t.startMs, stopMs: t.stopMs, totalMs: t.totalMs)
+    }
+
+    // Rescans unless the snapshot is newer than minAge, which coalesces the repeat
+    // draggingEntered calls a single hover produces.
+    func refresh(minAge: TimeInterval = 1) {
+        if let loadedAt, Date().timeIntervalSince(loadedAt) < minAge { return }
+        reload()
+    }
+
+    private func reload() {
+        let isFirstLoad = loadedAt == nil
+        loadedAt = Date()
+        guard let library else { return }
+        let started = Date()
+        if !isFirstLoad { library.reloadData() }   // the initial ITLibrary is already fresh
+        var result: [String: (startMs: Int, stopMs: Int, totalMs: Int)] = [:]
+        let items = library.allMediaItems
+        result.reserveCapacity(items.count)
+        for item in items {
+            result[String(format: "%016llX", item.persistentID.uint64Value)] =
+                (item.startTime, item.stopTime, item.totalTime)
+        }
+        times = result
+        os_log("music trim scan: %d track(s) in %.0fms", log: trimLog, type: .info,
+               result.count, Date().timeIntervalSince(started) * 1000)
+    }
+}

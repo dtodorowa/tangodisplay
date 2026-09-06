@@ -25,12 +25,16 @@ private extension Array {
 // return [] from draggingEntered and fall through to SwiftUI's own handlers.
 
 private class MusicAppDropView: NSView {
-    var onDrop: ([URL]) -> Void = { _ in }
+    var onDrop: ([URL], MusicDragIDs) -> Void = { _, _ in }
     var onTargeted: (Bool) -> Void = { _ in }
 
     // Legacy Music.app drag types (pre-Sequoia / older purchased AAC):
     private static let pasteboardType     = NSPasteboard.PasteboardType("com.apple.itunes.drag")
     private static let musicMetadataType  = NSPasteboard.PasteboardType("com.apple.music.metadata")
+    // Same plist under two newer names. Carries Location + Persistent ID for each dragged
+    // track (but not the start/stop times — those still come from ITLibrary).
+    private static let tvMetadataType     = NSPasteboard.PasteboardType("com.apple.tv.metadata")
+    private static let itunMetadataType   = NSPasteboard.PasteboardType("CorePasteboardFlavorType 0x6974756E")
     // Music.app on Sequoia for iTunes-purchased AAC: file promise + Music identifier
     private static let musicJRFSType      = NSPasteboard.PasteboardType("com.apple.Music.JRFS")
     // Legacy file-promise pasteboard types (Music.app's actual mechanism on Sequoia).
@@ -95,6 +99,10 @@ private class MusicAppDropView: NSView {
         os_log("draggingEntered types=%{public}@", log: dropLog, type: .info,
                String(describing: sender.draggingPasteboard.types ?? []))
         guard hasAcceptableDrag(sender) else { return [] }
+        // Start the Music start/stop rescan now, off the main thread: this fires about a
+        // second before the drop and is guaranteed to be after any edit the user just made
+        // in Music. Coalesced inside the cache, so repeat hovers cost nothing.
+        SetlistManager.warmMusicTrims()
         onTargeted(true)
         return .copy
     }
@@ -112,26 +120,27 @@ private class MusicAppDropView: NSView {
         let types = pasteboard.types ?? []
         os_log("performDrag types=%{public}@", log: dropLog, type: .info,
                String(describing: types))
+        let musicIDs = Self.musicDragIDs(pasteboard)
 
         // 1. Modern NSFilePromiseReceiver — for future Music.app versions.
         if let promises = pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self],
                                                   options: nil) as? [NSFilePromiseReceiver],
            !promises.isEmpty
         {
-            return acceptFilePromises(promises)
+            return acceptFilePromises(promises, musicIDs: musicIDs)
         }
 
         // 2. Legacy file-promise — Music.app on Sequoia for iTunes-purchased AAC.
         if types.contains(Self.legacyPromiseURLType)
             || types.contains(Self.legacyPromiseContentsType)
         {
-            return acceptLegacyFilePromise(sender)
+            return acceptLegacyFilePromise(sender, musicIDs: musicIDs)
         }
 
         // 3. Legacy plist path — pre-Sequoia purchased AAC.
         if types.contains(Self.musicMetadataType) {
             let urls = resolveViaMusicMetadata(pasteboard)
-            if !urls.isEmpty { onDrop(urls); return true }
+            if !urls.isEmpty { onDrop(urls, musicIDs); return true }
         }
 
         // 4. Plain file URL — Finder, Swinsian, AIFF-from-Music drags.
@@ -140,7 +149,7 @@ private class MusicAppDropView: NSView {
                                                  options: [.urlReadingFileURLsOnly: true]) as? [URL]
             if let pbURLs = pbURLs, !pbURLs.isEmpty {
                 os_log("file-url path resolved %d url(s)", log: dropLog, type: .info, pbURLs.count)
-                onDrop(pbURLs)
+                onDrop(pbURLs, musicIDs)
                 return true
             }
         }
@@ -149,7 +158,7 @@ private class MusicAppDropView: NSView {
         // Synchronous and slow (Music.app library query) — kept as a last resort.
         if types.contains(Self.pasteboardType) {
             let urls = resolveViaMusicSelection()
-            if !urls.isEmpty { onDrop(urls); return true }
+            if !urls.isEmpty { onDrop(urls, musicIDs); return true }
         }
 
         os_log("performDrag resolved zero urls", log: dropLog, type: .error)
@@ -167,7 +176,7 @@ private class MusicAppDropView: NSView {
     // If none of the items resolve to an on-disk file, fall back to
     // namesOfPromisedFilesDropped to ask Music.app to materialise the files
     // in our app-support cache (the genuine cloud-only case).
-    private func acceptLegacyFilePromise(_ sender: NSDraggingInfo) -> Bool {
+    private func acceptLegacyFilePromise(_ sender: NSDraggingInfo, musicIDs: MusicDragIDs) -> Bool {
         let pb = sender.draggingPasteboard
 
         let items = pb.pasteboardItems ?? []
@@ -205,7 +214,7 @@ private class MusicAppDropView: NSView {
         if !urls.isEmpty && urls.count >= advertisedCount {
             os_log("promise resolved %d url(s) from pasteboard string",
                    log: dropLog, type: .info, urls.count)
-            onDrop(urls)
+            onDrop(urls, musicIDs)
             return true
         }
 
@@ -220,12 +229,12 @@ private class MusicAppDropView: NSView {
         os_log("promise materialised %d file(s) at %{public}@",
                log: dropLog, type: .info, names.count, destDir.path)
         if !writtenURLs.isEmpty {
-            onDrop(writtenURLs)
+            onDrop(writtenURLs, musicIDs)
             return true
         }
         // Materialise yielded nothing — fall back to whatever local URLs resolved.
         guard !urls.isEmpty else { return false }
-        onDrop(urls)
+        onDrop(urls, musicIDs)
         return true
     }
 
@@ -233,7 +242,7 @@ private class MusicAppDropView: NSView {
     // persistent cache directory inside Application Support. Calls onDrop once all
     // promises have either resolved or failed. Returns true synchronously so the
     // drag UI completes immediately; the resulting URLs land asynchronously.
-    private func acceptFilePromises(_ promises: [NSFilePromiseReceiver]) -> Bool {
+    private func acceptFilePromises(_ promises: [NSFilePromiseReceiver], musicIDs: MusicDragIDs) -> Bool {
         let destDir = Self.filePromiseDestination()
         os_log("accepting %d file promise(s) to %{public}@",
                log: dropLog, type: .info, promises.count, destDir.path)
@@ -260,7 +269,7 @@ private class MusicAppDropView: NSView {
             if receivedURLs.isEmpty {
                 os_log("file promises yielded zero urls", log: dropLog, type: .error)
             } else {
-                self.onDrop(receivedURLs)
+                self.onDrop(receivedURLs, musicIDs)
             }
         }
         return true
@@ -281,6 +290,37 @@ private class MusicAppDropView: NSView {
     //   Older: {"12345": {"Location": "…"}, "Playlist Items": […]}
     // Location is either a "~/…" tilde path or a "file://…" URL (Embrace handles both).
     // Falls back to reading public.file-url directly if the plist yields nothing.
+    // Music's persistent IDs for the dragged tracks, straight off the pasteboard — free and
+    // instant. Only the IDs: the plist has no Start/Stop Time (verified against a track with
+    // start = 90s), so the times still come from the ITLibrary scan warmed in draggingEntered.
+    static func musicDragIDs(_ pasteboard: NSPasteboard) -> MusicDragIDs {
+        for item in pasteboard.pasteboardItems ?? [] {
+            for type in [tvMetadataType, itunMetadataType, musicMetadataType] {
+                guard let plist = item.propertyList(forType: type) as? [String: Any] else { continue }
+                let ids = MusicDragIDs(musicMetadataPlist: plist)
+                if !ids.isEmpty {
+                    os_log("music drag ids: %d track(s) from %{public}@",
+                           log: dropLog, type: .info, ids.count, type.rawValue)
+                    return ids
+                }
+            }
+        }
+        // Root-pasteboard fallback: the flavors are sometimes only advertised there.
+        for type in [tvMetadataType, itunMetadataType, musicMetadataType] {
+            guard let data = pasteboard.data(forType: type),
+                  let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+                  let dict = plist as? [String: Any] else { continue }
+            let ids = MusicDragIDs(musicMetadataPlist: dict)
+            if !ids.isEmpty {
+                os_log("music drag ids: %d track(s) from root %{public}@",
+                       log: dropLog, type: .info, ids.count, type.rawValue)
+                return ids
+            }
+        }
+        os_log("music drag ids: none on pasteboard", log: dropLog, type: .info)
+        return MusicDragIDs()
+    }
+
     private func resolveViaMusicMetadata(_ pasteboard: NSPasteboard) -> [URL] {
         var urls: [URL] = []
         for item in pasteboard.pasteboardItems ?? [] {
@@ -325,6 +365,10 @@ private class MusicAppDropView: NSView {
         return urls
     }
 
+    // WARNING: synchronous Apple event on the drop path. Music will not answer one while it
+    // is finishing a drag out of itself — measured at a flat 24.7s timeout, freezing the UI.
+    // Kept only because this is strategy 5 of 5: by the time we get here the alternative is
+    // the drag failing outright. Never add an Apple event to any earlier strategy.
     private func resolveViaMusicSelection() -> [URL] {
         let source = """
         tell application "Music"
@@ -366,7 +410,7 @@ private class MusicAppDropView: NSView {
 // Swinsian, AIFF from Music) flow past us to SwiftUI's .onDrop handler as today.
 private struct MusicAppWindowDropInstaller: NSViewRepresentable {
     @Binding var isTargeted: Bool
-    let onDrop: ([URL]) -> Void
+    let onDrop: ([URL], MusicDragIDs) -> Void
 
     func makeNSView(context: Context) -> InstallerSentinel { InstallerSentinel() }
 
@@ -377,7 +421,7 @@ private struct MusicAppWindowDropInstaller: NSViewRepresentable {
     class InstallerSentinel: NSView {
         private weak var dropView: MusicAppDropView?
         private var pendingBinding: Binding<Bool>?
-        private var pendingDrop: (([URL]) -> Void)?
+        private var pendingDrop: (([URL], MusicDragIDs) -> Void)?
         private var contentViewObserver: NSKeyValueObservation?
 
         override init(frame frameRect: NSRect) {
@@ -389,7 +433,7 @@ private struct MusicAppWindowDropInstaller: NSViewRepresentable {
             contentViewObserver?.invalidate()
         }
 
-        func update(isTargetedBinding: Binding<Bool>, onDrop: @escaping ([URL]) -> Void) {
+        func update(isTargetedBinding: Binding<Bool>, onDrop: @escaping ([URL], MusicDragIDs) -> Void) {
             pendingBinding = isTargetedBinding
             pendingDrop    = onDrop
             if let dv = dropView {
@@ -451,7 +495,7 @@ private struct MusicAppWindowDropInstaller: NSViewRepresentable {
 
         private func configure(_ dv: MusicAppDropView,
                                 binding: Binding<Bool>,
-                                onDrop: @escaping ([URL]) -> Void) {
+                                onDrop: @escaping ([URL], MusicDragIDs) -> Void) {
             dv.onTargeted = { t in DispatchQueue.main.async { binding.wrappedValue = t } }
             dv.onDrop = onDrop
         }
@@ -495,6 +539,7 @@ struct SetlistView: View {
     @State private var showBalancePopover = false
     @State private var showAutoGapPopover = false
     @State private var showReplayGainPopover = false
+    @State private var showRestorationPopover = false
     @State private var showPluginChainPopover = false
     @State private var scrollTrigger: UUID? = nil
     @State private var showLastTandaWarning = false
@@ -602,8 +647,8 @@ struct SetlistView: View {
             if let m = pasteMonitor { NSEvent.removeMonitor(m); pasteMonitor = nil }
         }
         .background(
-            MusicAppWindowDropInstaller(isTargeted: $isDragTargeted) { urls in
-                handleIncomingURLs(urls, anchorID: nil)
+            MusicAppWindowDropInstaller(isTargeted: $isDragTargeted) { urls, musicIDs in
+                handleIncomingURLs(urls, anchorID: nil, musicIDs: musicIDs)
             }
         )
         .onReceive(player.$currentEntryID) { activeEntryID = $0 }
@@ -696,6 +741,31 @@ struct SetlistView: View {
                             .environmentObject(settings)
                     }
                     .help("ReplayGain normalisation")
+                    // Never disabled, like ReplayGain: this is set-level configuration you
+                    // set up before starting, not a live-only control like EQ or Balance.
+                    // State has to be readable without opening the popover, hence the tint
+                    // plus a dot — a toolbar button style can drop the tint, but an overlay
+                    // always draws.
+                    Button { showRestorationPopover.toggle() } label: {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(settings.restoration.enabled ? Color.accentColor : Color.secondary)
+                            .overlay(alignment: .topTrailing) {
+                                if settings.restoration.enabled {
+                                    Circle()
+                                        .fill(Color.accentColor)
+                                        .frame(width: 5, height: 5)
+                                        .offset(x: 3, y: -2)
+                                }
+                            }
+                            .accessibilityLabel(settings.restoration.enabled
+                                                ? "Restoration on" : "Restoration off")
+                    }
+                    .popover(isPresented: $showRestorationPopover) {
+                        RestorationPopoverView().environmentObject(settings)
+                    }
+                    .help(settings.restoration.enabled
+                          ? "Shellac restoration — on (declick and dehum)"
+                          : "Shellac restoration — off")
                     if !settings.audioUnitPluginChain.isEmpty {
                         Button { showPluginChainPopover.toggle() } label: {
                             Label("Plugins", systemImage: "puzzlepiece.fill")
@@ -825,7 +895,8 @@ struct SetlistView: View {
 
     // MARK: - Drop handling
 
-    private func handleIncomingURLs(_ urls: [URL], anchorID: UUID?) {
+    private func handleIncomingURLs(_ urls: [URL], anchorID: UUID?,
+                                    musicIDs: MusicDragIDs = MusicDragIDs()) {
         // Reject files that no longer exist on disk (e.g. a Music track whose
         // underlying file is missing — shown with a warning triangle in Music).
         // Otherwise they enter the setlist and get silently skipped at playback.
@@ -839,13 +910,15 @@ struct SetlistView: View {
         guard !valid.isEmpty else { return }
 
         guard settings.duplicateTrackProtection else {
-            setlist.insertURLs(valid, before: anchorID, importMusicTimes: importMusicTimes)
+            setlist.insertURLs(valid, before: anchorID, importMusicTimes: importMusicTimes,
+                               musicIDs: musicIDs)
             return
         }
 
         let existingURLs = Set(setlist.entries.map(\.fileURL))
         guard valid.contains(where: { existingURLs.contains($0) }) else {
-            setlist.insertURLs(valid, before: anchorID, importMusicTimes: importMusicTimes)
+            setlist.insertURLs(valid, before: anchorID, importMusicTimes: importMusicTimes,
+                               musicIDs: musicIDs)
             return
         }
 
@@ -866,7 +939,10 @@ struct SetlistView: View {
         }
 
         let toInsert = shouldAddDuplicates ? valid : valid.filter { !existingURLs.contains($0) }
-        if !toInsert.isEmpty { setlist.insertURLs(toInsert, before: anchorID, importMusicTimes: importMusicTimes) }
+        if !toInsert.isEmpty {
+            setlist.insertURLs(toInsert, before: anchorID, importMusicTimes: importMusicTimes,
+                               musicIDs: musicIDs)
+        }
 
         let skipped = valid.count - toInsert.count
         if skipped > 0 {
@@ -1079,6 +1155,25 @@ struct SetlistView: View {
             }
         }
         let detector = settings.makeDetector()
+        // Shellac restoration: single track, built-in player only (only it has the graph).
+        // An override outranks the master switch, so a lone shellac transfer can be
+        // repaired in an otherwise unrestored set — and vice versa.
+        if targets.count == 1, let id = targets.first,
+           let e = setlist.entries.first(where: { $0.id == id }),
+           appState.localPlayer != nil {
+            Divider()
+            let byDefault = settings.restoration.appliesByDefault(
+                isCortina: detector.isCortina(genre: e.track.genre))
+            let applied = e.restorationApplied(globalDefault: byDefault)
+            Button(applied ? "Skip Restoration for this Track" : "Restore this Track") {
+                setlist.setRestorationOverride(id: id, skip: applied)
+            }
+            if e.restorationOverride != nil {
+                Button("Use Default Restoration") {
+                    setlist.setRestorationOverride(id: id, skip: nil)
+                }
+            }
+        }
         if settings.autoFadeCortinasEnabled && appState.fadeMode == .none {
             let autoFadeTargets = targets.filter { id in
                 guard let e = setlist.entries.first(where: { $0.id == id }) else { return false }
@@ -1226,11 +1321,17 @@ struct SetlistView: View {
     }
 
     private func pasteFromClipboard() {
+        // ⌘C in Music puts the same metadata plist on the general pasteboard as a drag does,
+        // so pasting from Music imports start/stop too. Warm the scan for the same reason
+        // draggingEntered does.
+        let musicIDs = MusicAppDropView.musicDragIDs(.general)
+        if !musicIDs.isEmpty { SetlistManager.warmMusicTrims() }
+
         // Standard path: works for Finder, Music.app, etc.
         let urls = (NSPasteboard.general.readObjects(forClasses: [NSURL.self],
                     options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
         if !urls.isEmpty {
-            handleIncomingURLs(urls, anchorID: nil)
+            handleIncomingURLs(urls, anchorID: nil, musicIDs: musicIDs)
             return
         }
 
@@ -1703,6 +1804,16 @@ struct SetlistRowView: View {
                         .padding(.vertical, 2)
                         .background(Color.blue.opacity(0.12))
                         .clipShape(Capsule())
+                }
+                // Only shown for an explicit per-track override — a track following the
+                // global rule needs no badge, or every row would carry one.
+                if let skip = entry.restorationOverride {
+                    // "sparkles.slash" is not an SF Symbol — it renders blank. nosign is.
+                    Image(systemName: skip ? "nosign" : "sparkles")
+                        .font(.system(size: 10))
+                        .foregroundColor(skip ? .secondary : .teal)
+                        .help(skip ? "Restoration skipped for this track"
+                                   : "Restoration applied to this track")
                 }
             }
             .padding(.top, 3)

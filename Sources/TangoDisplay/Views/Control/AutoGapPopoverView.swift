@@ -14,7 +14,7 @@ struct AutoGapPopoverView: View {
                 .foregroundStyle(.secondary)
                 .frame(height: 14)
 
-            Slider(value: $settings.autoGapDuration, in: 0.5...5, step: 0.5)
+            AppSlider(value: $settings.autoGapDuration, range: 0.5...5, step: 0.5)
         }
         .padding(12)
         .frame(width: 200)

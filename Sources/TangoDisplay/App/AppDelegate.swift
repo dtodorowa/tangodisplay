@@ -26,9 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // allowed by TCC; without this the cross-process drag is silently gated
     // until something else (e.g. a SwiftUI .onDrop call) probes the library.
     // Constructing ITLibrary is the documented way to request this access on
-    // macOS. The instance itself is discarded; we only care about the prompt.
+    // macOS. Warming the trim cache does exactly that, and leaves a usable
+    // snapshot behind so the first Music drag doesn't wait for the scan.
     private func requestMediaLibraryAccess() {
-        _ = try? ITLibrary(apiVersion: "1.1")
+        SetlistManager.warmMusicTrims()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

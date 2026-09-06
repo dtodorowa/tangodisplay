@@ -20,7 +20,7 @@ struct ReplayGainPopoverView: View {
 
             LabeledContent("Preamp") {
                 HStack(spacing: 6) {
-                    Slider(value: $settings.replayGainPreampDb, in: -12...6, step: 0.5)
+                    AppSlider(value: $settings.replayGainPreampDb, range: -12...6, step: 0.5)
                     Text(String(format: "%+.1f dB", settings.replayGainPreampDb))
                         .font(.system(size: 11, design: .monospaced))
                         .frame(width: 56, alignment: .trailing)
@@ -30,7 +30,7 @@ struct ReplayGainPopoverView: View {
 
             LabeledContent("Target") {
                 HStack(spacing: 6) {
-                    Slider(value: $settings.replayGainTargetLufs, in: -23...(-14), step: 0.5)
+                    AppSlider(value: $settings.replayGainTargetLufs, range: -23...(-14), step: 0.5)
                     Text(String(format: "%.1f LUFS", settings.replayGainTargetLufs))
                         .font(.system(size: 11, design: .monospaced))
                         .frame(width: 64, alignment: .trailing)

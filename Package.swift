@@ -15,10 +15,12 @@ let package = Package(
             name: "TangoDisplayCore",
             path: "Sources/TangoDisplayCore"
         ),
-        // ObjC helpers — provides @try/@catch wrappers that Swift cannot express
+        // ObjC/ObjC++ helpers — @try/@catch wrappers Swift cannot express, plus the
+        // ShellacFilters declick/dehum DSP cores wrapped as in-process Audio Units
         .target(
             name: "TangoDisplayObjC",
             path: "Sources/TangoDisplayObjC",
+            exclude: ["shellac/README.md", "shellac/LICENSE.txt"],
             publicHeadersPath: "include"
         ),
         // Main app executable
@@ -42,7 +44,7 @@ let package = Package(
         // Usage: swift run TangoDisplayTests
         .executableTarget(
             name: "TangoDisplayTests",
-            dependencies: ["TangoDisplayCore"],
+            dependencies: ["TangoDisplayCore", "TangoDisplayObjC"],
             path: "Tests/TangoDisplayTests"
         )
     ]

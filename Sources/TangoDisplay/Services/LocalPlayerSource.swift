@@ -65,6 +65,13 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
     private let audioEngine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
     private let eq = AVAudioUnitEQ(numberOfBands: 5)
+    // ShellacFilters restoration, ahead of the EQ so the record is repaired before it
+    // is tone-shaped. nil when registration failed — the app then runs without them.
+    private var declickUnit: AVAudioUnit?
+    private var dehumUnit: AVAudioUnit?
+    /// Which restoration nodes belong in the graph for the track being loaded. Read by
+    /// connectAudioGraph, which is also called from paths that have no entry to hand.
+    private var activeRestoration: (declick: Bool, dehum: Bool) = (false, false)
     private let replayGainMixer = AVAudioMixerNode()
     private let balanceMixer = AVAudioMixerNode()
     private var audioFile: AVAudioFile?
@@ -159,6 +166,7 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
         audioEngine.attach(eq)
         audioEngine.attach(replayGainMixer)
         audioEngine.attach(balanceMixer)
+        setupRestorationUnits()
         connectAudioGraph(format: nil)
 
         let frequencies: [Float]          = [60, 250, 1000, 4000, 12000]
@@ -179,6 +187,96 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
             name: .AVAudioEngineConfigurationChange,
             object: audioEngine
         )
+    }
+
+    // MARK: - Shellac restoration
+
+    /// Instantiates the two in-process units by description. They are registered with
+    /// AudioComponent rather than published to AVAudioUnitComponentManager, so they
+    /// never appear in the plugin picker and never occupy one of the four user slots.
+    private func setupRestorationUnits() {
+        guard TDRestorationRegister() else {
+            os_log(.error, "TangoDisplay: shellac restoration unavailable; continuing without it")
+            return
+        }
+
+        func make(_ subType: OSType) -> AVAudioUnit {
+            var acd = AudioComponentDescription()
+            acd.componentType = kAudioUnitType_Effect
+            acd.componentSubType = subType
+            acd.componentManufacturer = TDRestorationManufacturer
+            return AVAudioUnitEffect(audioComponentDescription: acd)
+        }
+
+        let declick = make(TDDeclickSubType)
+        let dehum = make(TDDehumSubType)
+        audioEngine.attach(declick)
+        audioEngine.attach(dehum)
+        declickUnit = declick
+        dehumUnit = dehum
+
+        applyRestorationParams(settings.restoration)
+        // Connected from the first graph build, so start them bypassed.
+        applyRestorationEngagement((false, false))
+    }
+
+    /// Which restoration nodes this entry wants. A per-track override outranks both the
+    /// master switch and the cortina rule — marking one transfer for repair is meant to
+    /// work whether or not restoration is on for the set.
+    private func restorationNodes(for entry: SetlistEntry?) -> (declick: Bool, dehum: Bool) {
+        guard let entry else { return (false, false) }
+        let r = settings.restoration
+
+        let isCortina = r.skipOnCortinas && settings.makeDetector().isCortina(genre: entry.track.genre)
+        let on = entry.restorationApplied(globalDefault: r.appliesByDefault(isCortina: isCortina))
+        return (declick: on && r.declickEnabled && declickUnit != nil,
+                dehum:   on && r.dehumEnabled   && dehumUnit   != nil)
+    }
+
+    /// Parameter moves are written straight through; the cores retune in place, so this
+    /// never needs a graph rewire. Only engagement does.
+    private func applyRestorationParams(_ r: RestorationSettings) {
+        func write(_ unit: AVAudioUnit?, _ values: [Float]) {
+            guard let tree = unit?.auAudioUnit.parameterTree else { return }
+            for (address, value) in values.enumerated() {
+                tree.parameter(withAddress: AUParameterAddress(address))?.value = value
+            }
+        }
+        write(declickUnit, r.declickValues)
+        write(dehumUnit, r.dehumValues)
+    }
+
+    /// Engagement is bypass, not graph topology. Both units stay connected, so switching
+    /// restoration on or off mid-track is one atomic store rather than an engine restart —
+    /// which is what used to drop a chunk of audio and jump the position by up to the 0.5 s
+    /// poll interval. A bypassed unit runs its DSP with a wet mix of zero: output is the dry
+    /// signal bit for bit, declick's pipeline stays primed and dehum keeps tracking its line,
+    /// so switching back is instant and sample-aligned.
+    private func applyRestorationEngagement(_ wanted: (declick: Bool, dehum: Bool),
+                                            scoutIfNewlyOn: Bool = true) {
+        let dehumNewlyOn = scoutIfNewlyOn && wanted.dehum && !activeRestoration.dehum
+        activeRestoration = wanted
+        declickUnit?.auAudioUnit.shouldBypassEffect = !wanted.declick
+        dehumUnit?.auAudioUnit.shouldBypassEffect   = !wanted.dehum
+
+        // Engaged part-way through a record, dehum has no scout behind it and would spend
+        // 9-43 s acquiring the line with the hum still audible. loadEntry does its own
+        // scouting; a later one supersedes it.
+        if dehumNewlyOn,
+           let entry = currentEntryID.flatMap({ id in setlist.entries.first { $0.id == id } }) {
+            TDRestorationScout(dehumUnit?.auAudioUnit, entry.fileURL)
+        }
+    }
+
+    /// Each record carries its own clicks and its own hum, so nothing carries over.
+    /// Scouting reads the opening of the file off-thread and pre-seeds dehum's detector,
+    /// which otherwise needs 9-43 s of playback before it engages.
+    private func startRestorationForTrack(_ entry: SetlistEntry) {
+        TDRestorationForgetTrack(declickUnit?.auAudioUnit)
+        TDRestorationForgetTrack(dehumUnit?.auAudioUnit)
+        if activeRestoration.dehum {
+            TDRestorationScout(dehumUnit?.auAudioUnit, entry.fileURL)
+        }
     }
 
     @objc private func handleEngineConfigChange() {
@@ -831,9 +929,13 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
             // Stop the engine before reconnecting so the graph is in a clean state; a mono
             // AIFF scheduled against the stereo-defaulted startup connection produces silence.
             audioEngine.stop()
+            // startRestorationForTrack owns the scout for a track load, so don't fire a
+            // second one from here.
+            applyRestorationEngagement(restorationNodes(for: entry), scoutIfNewlyOn: false)
             connectAudioGraph(format: file.processingFormat)
             try audioEngine.start()
             levelMeter.reinstallTap()
+            startRestorationForTrack(entry)
             applyReplayGain(for: entry)
 
             // Pre-warm loudness analysis for the next track so it's cached before it starts.
@@ -1063,6 +1165,8 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
 
     private func connectAudioGraph(format: AVAudioFormat?) {
         audioEngine.disconnectNodeOutput(playerNode)
+        if let unit = declickUnit { audioEngine.disconnectNodeOutput(unit) }
+        if let unit = dehumUnit { audioEngine.disconnectNodeOutput(unit) }
         audioEngine.disconnectNodeOutput(eq)
         audioEngine.disconnectNodeOutput(replayGainMixer)
         for runtime in slotRuntimes.values {
@@ -1072,7 +1176,22 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
         }
         audioEngine.disconnectNodeOutput(balanceMixer)
 
-        audioEngine.connect(playerNode, to: eq, format: format)
+        // Shellac restoration first: repair the record before shaping it. Wired with the
+        // file's own format, mono included — declick works on mono, unlike the Airwindows
+        // declicker it derives from. Both nodes stay in the graph whether or not they are
+        // engaged: engagement is expressed as bypass (see applyRestorationEngagement), which
+        // costs an atomic store instead of the engine restart a rewire would need. The price
+        // is declick's ~20 ms of latency and a little DSP on every track.
+        var preEQ: AVAudioNode = playerNode
+        if let unit = declickUnit {
+            audioEngine.connect(preEQ, to: unit, format: format)
+            preEQ = unit
+        }
+        if let unit = dehumUnit {
+            audioEngine.connect(preEQ, to: unit, format: format)
+            preEQ = unit
+        }
+        audioEngine.connect(preEQ, to: eq, format: format)
         audioEngine.connect(eq, to: replayGainMixer, format: format)
 
         // AU plugins often don't support mono. Upmix to stereo here so replayGainMixer
@@ -1596,6 +1715,24 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
             .sink { [weak self] v in self?.balance = v }
             .store(in: &cancellables)
 
+        // Parameter moves are written straight through, and engagement toggles bypass —
+        // neither touches the graph, so restoration never interrupts playback.
+        settings.$restoration
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] r in
+                guard let self else { return }
+                self.applyRestorationParams(r)
+                let entry = self.currentEntryID.flatMap { id in
+                    self.setlist.entries.first { $0.id == id }
+                }
+                let wanted = self.restorationNodes(for: entry)
+                if wanted != self.activeRestoration {
+                    self.applyRestorationEngagement(wanted)
+                }
+            }
+            .store(in: &cancellables)
+
         // receive(on: DispatchQueue.main) defers the sink to the next run-loop cycle so that
         // the @Published property (which fires in willSet) is fully committed before we read it.
         settings.$replayGainMode
@@ -1631,6 +1768,15 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
                 // Remove early-mark for entries removed from setlist or explicitly unmarked as played.
                 let playedIDs = Set(entries.filter { $0.state == .played }.map(\.id))
                 self.earlyMarkedEntryIDs.formIntersection(playedIDs)
+                // Per-track restoration override on the track that is already playing:
+                // act only when engagement actually changed, so ordinary setlist edits
+                // don't touch the units.
+                if let id = self.currentEntryID {
+                    let wanted = self.restorationNodes(for: entries.first { $0.id == id })
+                    if wanted != self.activeRestoration {
+                        self.applyRestorationEngagement(wanted)
+                    }
+                }
                 if let id = self.currentEntryID, !self.earlyMarkedEntryIDs.contains(id) {
                     self.isCurrentEntryMarkedAsPlayed = false
                 }

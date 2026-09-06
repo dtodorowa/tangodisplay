@@ -18,7 +18,7 @@ struct BalanceView: View {
                 Text("L")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
-                Slider(value: $settings.builtInBalance, in: -1.0...1.0)
+                AppSlider(value: $settings.builtInBalance, range: -1.0...1.0)
                 Text("R")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)

@@ -81,19 +81,25 @@ private struct VerticalSlider: NSViewRepresentable {
     @Binding var value: Float
     let range: ClosedRange<Float>
 
-    func makeNSView(context: Context) -> NSSlider {
-        let slider = NSSlider()
+    // KnobDrawingSlider for the macOS 26 unpainted-knob defect — see AppSlider.swift. It
+    // bites hardest here: these default to 0 dB, which is also NSSlider's own default, so
+    // the value never changes and a flat EQ shows five knobless tracks.
+    func makeNSView(context: Context) -> KnobDrawingSlider {
+        let slider = KnobDrawingSlider()
         slider.isVertical = true
         slider.minValue = Double(range.lowerBound)
         slider.maxValue = Double(range.upperBound)
         slider.numberOfTickMarks = 5
         slider.allowsTickMarkValuesOnly = false
+        slider.doubleValue = Double(value)
+        slider.pendingValue = Double(value)
         slider.target = context.coordinator
         slider.action = #selector(Coordinator.valueChanged(_:))
         return slider
     }
 
-    func updateNSView(_ nsView: NSSlider, context: Context) {
+    func updateNSView(_ nsView: KnobDrawingSlider, context: Context) {
+        nsView.pendingValue = Double(value)
         if Float(nsView.doubleValue) != value {
             nsView.doubleValue = Double(value)
         }
