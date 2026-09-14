@@ -42,6 +42,8 @@ final class AppState: ObservableObject {
     let setlist = SetlistManager()
     let configStore = PluginConfigurationStore()
     let microphoneMonitor = MicrophoneMonitor()
+    let musicLibrary = MusicLibraryBrowser()
+    lazy var prelistenPlayer = PrelistenPlayer(settings: settings)
     lazy var setlistRemoteBridge: RemoteControlBridge = RemoteControlBridge(appState: self, settings: self.settings)
     private var activeSource: any MusicPlayerSource = MusicPoller()  // replaced in start()
     private var cancellables = Set<AnyCancellable>()

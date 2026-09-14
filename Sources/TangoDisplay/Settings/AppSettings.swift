@@ -110,6 +110,16 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(builtInHogMode, forKey: kPrefix + "builtInHogMode") }
     }
 
+    @Published var prelistenOutputDeviceUID: String {
+        didSet { UserDefaults.standard.set(prelistenOutputDeviceUID, forKey: kPrefix + "prelistenOutputDeviceUID") }
+    }
+    @Published var prelistenVolume: Float {
+        didSet { UserDefaults.standard.set(prelistenVolume, forKey: kPrefix + "prelistenVolume") }
+    }
+    @Published var prelistenAutoAdvance: Bool {
+        didSet { UserDefaults.standard.set(prelistenAutoAdvance, forKey: kPrefix + "prelistenAutoAdvance") }
+    }
+
     @Published var eqBand0Gain: Float {
         didSet { UserDefaults.standard.set(eqBand0Gain, forKey: kPrefix + "eqBand0Gain") }
     }
@@ -379,6 +389,9 @@ final class AppSettings: ObservableObject {
         builtInFadeDuration = ud.object(forKey: kPrefix + "builtInFadeDuration").flatMap { $0 as? Double } ?? 5.0
         builtInOutputDeviceUID = ud.string(forKey: kPrefix + "builtInOutputDeviceUID") ?? ""
         builtInHogMode = ud.object(forKey: kPrefix + "builtInHogMode").flatMap { $0 as? Bool } ?? false
+        prelistenOutputDeviceUID = ud.string(forKey: kPrefix + "prelistenOutputDeviceUID") ?? ""
+        prelistenVolume = ud.object(forKey: kPrefix + "prelistenVolume").flatMap { $0 as? Float } ?? 1.0
+        prelistenAutoAdvance = ud.object(forKey: kPrefix + "prelistenAutoAdvance").flatMap { $0 as? Bool } ?? true
         eqBand0Gain = ud.object(forKey: kPrefix + "eqBand0Gain").flatMap { $0 as? Float } ?? 0.0
         eqBand1Gain = ud.object(forKey: kPrefix + "eqBand1Gain").flatMap { $0 as? Float } ?? 0.0
         eqBand2Gain = ud.object(forKey: kPrefix + "eqBand2Gain").flatMap { $0 as? Float } ?? 0.0

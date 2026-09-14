@@ -83,6 +83,9 @@ private class MusicAppDropView: NSView {
 
     private func hasAcceptableDrag(_ sender: NSDraggingInfo) -> Bool {
         let types = sender.draggingPasteboard.types ?? []
+        // Prelisten rows go in through the list itself or Add to Setlist. Accepting them
+        // here would add tracks when a drag is let go anywhere over the docked pane.
+        if types.contains(.prelistenRow) { return false }
         let match = types.contains(Self.pasteboardType)
             || types.contains(Self.musicMetadataType)
             || types.contains(Self.musicJRFSType)
@@ -295,7 +298,7 @@ private class MusicAppDropView: NSView {
     // start = 90s), so the times still come from the ITLibrary scan warmed in draggingEntered.
     static func musicDragIDs(_ pasteboard: NSPasteboard) -> MusicDragIDs {
         for item in pasteboard.pasteboardItems ?? [] {
-            for type in [tvMetadataType, itunMetadataType, musicMetadataType] {
+            for type in [tvMetadataType, itunMetadataType, musicMetadataType, .prelistenMetadata] {
                 guard let plist = item.propertyList(forType: type) as? [String: Any] else { continue }
                 let ids = MusicDragIDs(musicMetadataPlist: plist)
                 if !ids.isEmpty {
@@ -306,7 +309,7 @@ private class MusicAppDropView: NSView {
             }
         }
         // Root-pasteboard fallback: the flavors are sometimes only advertised there.
-        for type in [tvMetadataType, itunMetadataType, musicMetadataType] {
+        for type in [tvMetadataType, itunMetadataType, musicMetadataType, .prelistenMetadata] {
             guard let data = pasteboard.data(forType: type),
                   let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
                   let dict = plist as? [String: Any] else { continue }

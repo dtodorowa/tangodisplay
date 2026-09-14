@@ -73,6 +73,16 @@ struct TangoDisplayApp: App {
         }
         .defaultSize(width: 700, height: 160)
 
+        // Prelisten window — browse Music playlists and cue tracks on a separate output
+        Window("Prelisten", id: "prelisten") {
+            PrelistenPane(presentation: .window, library: appState.musicLibrary, player: appState.prelistenPlayer)
+                .environmentObject(appState)
+                .environmentObject(appState.settings)
+                .preferredColorScheme(.dark)
+        }
+        .defaultSize(width: 1000, height: 640)
+        .commands { PrelistenCommands() }
+
         // Presentation window — WindowGroup allows dragging to external monitors
         WindowGroup(id: "presentation") {
             PresentationView()
@@ -94,6 +104,7 @@ struct TangoDisplayApp: App {
                 WindowManager.showControlWindow()
                 NotificationCenter.default.post(name: .navigateToSetlist, object: nil)
             }
+            PrelistenMenuButton()
             Divider()
             Button("Quit TangoDisplay") {
                 NSApp.terminate(nil)

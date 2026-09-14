@@ -67,12 +67,15 @@ struct ControlView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var preFocusSelectedItem: SidebarItem? = nil
     @State private var didApplyStartupPreferences = false
+    @AppStorage(PrelistenDefaults.docked) private var prelistenDocked = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } detail: {
-            detail
+            PrelistenDockContainer {
+                detail
+            }
         }
         .environmentObject(reportStore)
         .frame(minWidth: 820, minHeight: 660)
@@ -125,6 +128,15 @@ struct ControlView: View {
             selectedItem = .setlist
         }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    prelistenDocked.toggle()
+                } label: {
+                    Label(prelistenDocked ? "Hide Prelisten" : "Prelisten",
+                          systemImage: prelistenDocked ? "headphones.circle.fill" : "headphones")
+                }
+                .help(prelistenDocked ? "Hide Prelisten (⌘⇧L)" : "Prelisten Music playlists in this window (⌘⇧L)")
+            }
             ToolbarItem {
                 Button {
                     focusMode.toggle()
