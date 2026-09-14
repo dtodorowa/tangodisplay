@@ -95,13 +95,102 @@ public func prelistenRowMatches(_ query: String, fields: [String]) -> Bool {
     }
 }
 
+public struct PrelistenYearRange: Equatable {
+    public let from: Int?
+    public let to: Int?
+
+    public init(from: Int?, to: Int?) {
+        self.from = from
+        self.to = to
+    }
+
+    public var isUnbounded: Bool { from == nil && to == nil }
+
+    /// Inclusive, and bounds typed the wrong way round still work. A row without a year drops
+    /// out once a bound is set, since it can't be shown to be in range.
+    public func contains(_ year: Int?) -> Bool {
+        if isUnbounded { return true }
+        guard let year else { return false }
+        var low = from ?? .min, high = to ?? .max
+        if low > high { swap(&low, &high) }
+        return (low...high).contains(year)
+    }
+}
+
+/// Reads the Years field: "35-38", "1935–1945", "40" for one year, "40-" or "-45" for an open
+/// end. Two digits mean 19xx, where most tango recordings are; later years need four digits.
+/// A half-typed year like "194" sets no bound, so the list doesn't empty while typing.
+public func prelistenYearRange(_ text: String) -> PrelistenYearRange {
+    func year(_ part: Substring) -> Int? {
+        let digits = part.trimmingCharacters(in: .whitespaces)
+        guard digits.allSatisfy(\.isASCII), let value = Int(digits) else { return nil }
+        switch digits.count {
+        case 2: return 1900 + value
+        case 4: return value
+        default: return nil
+        }
+    }
+    let parts = text.split(separator: "-", omittingEmptySubsequences: false)
+        .flatMap { $0.split(separator: "–", omittingEmptySubsequences: false) }
+    switch parts.count {
+    case 1: return PrelistenYearRange(from: year(parts[0]), to: year(parts[0]))
+    case 2: return PrelistenYearRange(from: year(parts[0]), to: year(parts[1]))
+    default: return PrelistenYearRange(from: nil, to: nil)
+    }
+}
+
 // MARK: - Column browser
 
+/// A list the column browser can show. Raw values are what gets stored.
+public enum PrelistenBrowseField: String, CaseIterable {
+    case genre, artist, composer, album, grouping, comment
+
+    public static let standard: [PrelistenBrowseField] = [.genre, .artist, .album, .comment]
+}
+
+/// Reads the stored comma-separated lists. Unknown and repeated names are skipped, and
+/// nothing usable gives the standard lists, so the browser always has something to right-click.
+public func prelistenBrowseFields(stored: String) -> [PrelistenBrowseField] {
+    var seen = Set<PrelistenBrowseField>()
+    let fields = stored.split(separator: ",")
+        .compactMap { PrelistenBrowseField(rawValue: String($0)) }
+        .filter { seen.insert($0).inserted }
+    return fields.isEmpty ? PrelistenBrowseField.standard : fields
+}
+
+/// Hides a shown list or shows a hidden one. A list being shown goes after the last shown
+/// list that comes before it in `allCases`, so it lands in its usual place even after moves.
+/// The last list stays: with none left there'd be nothing to right-click to get one back.
+public func prelistenTogglingBrowseField(_ field: PrelistenBrowseField,
+                                         in fields: [PrelistenBrowseField]) -> [PrelistenBrowseField] {
+    var result = fields
+    if let index = fields.firstIndex(of: field) {
+        if fields.count > 1 { result.remove(at: index) }
+        return result
+    }
+    let earlier = PrelistenBrowseField.allCases.prefix { $0 != field }
+    let position = fields.lastIndex { earlier.contains($0) }.map { $0 + 1 } ?? 0
+    result.insert(field, at: position)
+    return result
+}
+
+public func prelistenMovingBrowseField(_ field: PrelistenBrowseField, by offset: Int,
+                                       in fields: [PrelistenBrowseField]) -> [PrelistenBrowseField] {
+    guard let index = fields.firstIndex(of: field) else { return fields }
+    var result = fields
+    result.remove(at: index)
+    result.insert(field, at: min(max(index + offset, 0), result.count))
+    return result
+}
+
 public struct PrelistenBrowseColumn: Equatable {
-    /// Distinct non-blank values among the rows left by the columns to the left, in Finder order.
+    /// Distinct non-blank values among the rows the columns to the left leave, plus picked
+    /// values that have none, in Finder order.
     public let values: [String]
-    /// The stored selection narrowed to `values`. Empty means All.
+    /// Empty means All.
     public let selection: Set<String>
+    /// Picked values no row has anymore.
+    public let unmatched: Set<String>
 }
 
 public struct PrelistenBrowseResult<Row> {
@@ -109,26 +198,23 @@ public struct PrelistenBrowseResult<Row> {
     public let rows: [Row]
 }
 
-/// Music's column browser: each column lists what's left after the columns to its left, and
-/// the rows are what's left after all of them. A stored selection that isn't among a column's
-/// values counts as All, so picking another artist doesn't empty the list just because the
-/// singer picked for the previous one isn't there.
+/// Music's column browser: each column lists what the columns to its left leave, and the rows
+/// are what all of them leave. A pick keeps filtering when no row has its value anymore, for
+/// example after typing in the filter field, and stays listed. The empty result then has a
+/// visible cause, where falling back to All would quietly show other singers.
 public func prelistenBrowse<Row>(_ rows: [Row], by fields: [(Row) -> String],
                                  selections: [Set<String>]) -> PrelistenBrowseResult<Row> {
-    func value(_ row: Row, _ field: (Row) -> String) -> String {
-        field(row).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
     var remaining = rows
     var columns: [PrelistenBrowseColumn] = []
     for (index, field) in fields.enumerated() {
-        let distinct = Set(remaining.lazy.map { value($0, field) }.filter { !$0.isEmpty })
-        let stored = index < selections.count ? selections[index] : []
-        let selection = stored.intersection(distinct)
+        let distinct = browseValues(remaining, field)
+        let selection = index < selections.count ? selections[index] : []
         columns.append(PrelistenBrowseColumn(
-            values: distinct.sorted { $0.localizedStandardCompare($1) == .orderedAscending },
-            selection: selection))
+            values: distinct.union(selection).sorted { $0.localizedStandardCompare($1) == .orderedAscending },
+            selection: selection,
+            unmatched: selection.subtracting(distinct)))
         if !selection.isEmpty {
-            remaining = remaining.filter { selection.contains(value($0, field)) }
+            remaining = remaining.filter { selection.contains(browseValue($0, field)) }
         }
     }
     return PrelistenBrowseResult(columns: columns, rows: remaining)
@@ -136,15 +222,45 @@ public func prelistenBrowse<Row>(_ rows: [Row], by fields: [(Row) -> String],
 
 /// Applies a click in one column's list. `picked` is that list's new selection, nil standing
 /// for its All row. All and values exclude each other: picking All clears the column, picking
-/// a value while All shows replaces it. The other columns keep only what they show, so a
-/// selection an earlier pick hid doesn't come back several clicks later.
-public func prelistenBrowseSelections(afterPicking picked: Set<String?>, inColumn index: Int,
-                                      of columns: [PrelistenBrowseColumn]) -> [Set<String>] {
-    var selections = columns.map(\.selection)
-    guard selections.indices.contains(index) else { return selections }
-    let shown = selections[index]
-    selections[index] = picked.contains(nil) && !shown.isEmpty ? [] : Set(picked.compactMap { $0 })
-    return selections
+/// a value while All shows replaces it. Picks to the right that the new pick leaves without
+/// rows are dropped, so switching orchestra doesn't keep the last one's singer picked.
+/// Pass the rows before any text or year filter, so only the columns decide what's dropped.
+public func prelistenBrowseSelections<Row>(afterPicking picked: Set<String?>, inColumn index: Int,
+                                           selections: [Set<String>], rows: [Row],
+                                           by fields: [(Row) -> String]) -> [Set<String>] {
+    var result = fields.indices.map { $0 < selections.count ? selections[$0] : [] }
+    guard result.indices.contains(index) else { return result }
+    result[index] = picked.contains(nil) && !result[index].isEmpty ? [] : Set(picked.compactMap { $0 })
+    var remaining = rows
+    for (column, field) in fields.enumerated() {
+        if column > index {
+            result[column].formIntersection(browseValues(remaining, field))
+        }
+        let selection = result[column]
+        if !selection.isEmpty {
+            remaining = remaining.filter { selection.contains(browseValue($0, field)) }
+        }
+    }
+    return result
+}
+
+/// What one list shows while its search field has text: values matching every word, ignoring
+/// case and accents, plus picked values, so a pick that's filtering the rows never hides.
+public func prelistenBrowseListValues(_ column: PrelistenBrowseColumn, search: String) -> [String] {
+    column.values.filter { column.selection.contains($0) || prelistenRowMatches(search, fields: [$0]) }
+}
+
+private func browseValue<Row>(_ row: Row, _ field: (Row) -> String) -> String {
+    field(row).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+private func browseValues<Row>(_ rows: [Row], _ field: (Row) -> String) -> Set<String> {
+    var values = Set<String>()
+    for row in rows {
+        let value = browseValue(row, field)
+        if !value.isEmpty { values.insert(value) }
+    }
+    return values
 }
 
 public func formatPrelistenTime(_ seconds: Double) -> String {

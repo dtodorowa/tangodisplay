@@ -77,8 +77,12 @@ The audio device prelisten plays to, chosen separately from the main output. Usu
 _Avoid_: cue output, headphones
 
 **Column browser**:
-Genres, Artists, Albums and Comments lists above a playlist's rows, as in Music. Picking values in one list narrows the lists to its right and the rows. Some DJs keep the singer in Comments, so picking one there shows only that singer's rows.
+Lists of values above a playlist's rows, as in Music. Genres, Artists, Albums and Comments unless the DJ right-clicks to pick other lists or move them. Picking values in one list narrows the lists to its right and the rows. Some DJs keep the singer in Comments, so picking one there shows only that singer's rows.
 _Avoid_: filters, facets, tag browser
+
+**Year range**:
+The recording years prelisten rows are narrowed to, such as 1935 to 1945. Rows without a year drop out while a range is set.
+_Avoid_: date filter
 
 **Auto-advance**:
 Prelisten moving on to the next row when one ends. With it off, prelisten stops after each row.

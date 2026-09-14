@@ -129,16 +129,22 @@ func runPrelistenTests() {
             let result = browse([[], [], ["Mauré, Héctor"]])
             try expectEqual(result.rows.map(\.title), ["La bruja"])
         }
-        test("a selection missing from these rows counts as All instead of hiding everything") {
+        test("a pick with no rows left stays listed and picked, so an empty list has a visible reason") {
             let result = browse([["3 Vals"], ["De Angelis, Alfredo"]])
-            try expectEqual(result.columns[1].selection, [])
-            try expectEqual(result.rows.map(\.title), ["Loca"])
+            try expectEqual(result.columns[1].values, ["D'Arienzo, Juan", "De Angelis, Alfredo"])
+            try expectEqual(result.columns[1].selection, ["De Angelis, Alfredo"])
+            try expectEqual(result.columns[1].unmatched, ["De Angelis, Alfredo"])
+            try expectEqual(result.rows, [])
+        }
+        test("a pick that has rows isn't unmatched") {
+            try expectEqual(browse([[], ["D'Arienzo, Juan"]]).columns[1].unmatched, [])
         }
     }
 
     suite("Prelisten column browser clicks") {
         func click(_ picked: Set<String?>, column: Int, showing selections: [Set<String>]) -> [Set<String>] {
-            prelistenBrowseSelections(afterPicking: picked, inColumn: column, of: browse(selections).columns)
+            prelistenBrowseSelections(afterPicking: picked, inColumn: column, selections: selections,
+                                      rows: rows, by: fields)
         }
         test("clicking a value while All shows selects just that value") {
             try expectEqual(click(["Tango"], column: 0, showing: []), [["Tango"], [], []])
@@ -153,10 +159,100 @@ func runPrelistenTests() {
                             [["Tango", "3 Vals"], [], []])
             try expectEqual(click([], column: 0, showing: [["Tango"]]), [[], [], []])
         }
-        test("a click keeps what the other columns show and forgets selections they hid") {
-            let result = click(["D'Arienzo, Juan"], column: 1,
-                               showing: [["3 Vals"], ["De Angelis, Alfredo"], ["Echagüe, Juan Carlos"]])
-            try expectEqual(result, [["3 Vals"], ["D'Arienzo, Juan"], []])
+        test("a click drops picks to its right that the new pick leaves without rows") {
+            let result = click(["De Angelis, Alfredo"], column: 1,
+                               showing: [["Tango"], ["D'Arienzo, Juan"], ["Echagüe, Juan Carlos"]])
+            try expectEqual(result, [["Tango"], ["De Angelis, Alfredo"], []])
+        }
+        test("a click keeps picks to its right that still have rows") {
+            let result = click(["D'Arienzo, Juan", "De Angelis, Alfredo"], column: 1,
+                               showing: [["Tango"], ["D'Arienzo, Juan"], ["Echagüe, Juan Carlos"]])
+            try expectEqual(result, [["Tango"], ["D'Arienzo, Juan", "De Angelis, Alfredo"], ["Echagüe, Juan Carlos"]])
+        }
+        test("a click never drops picks to its left") {
+            try expectEqual(click(["Dante, Carlos"], column: 2, showing: [["3 Vals"]]),
+                            [["3 Vals"], [], ["Dante, Carlos"]])
+        }
+    }
+
+    suite("Prelisten list search") {
+        let singers = browse([[], [], ["Dante, Carlos"]]).columns[2]
+        test("a blank search shows every value") {
+            try expectEqual(prelistenBrowseListValues(singers, search: " "), singers.values)
+        }
+        test("search ignores case and accents") {
+            try expectEqual(prelistenBrowseListValues(browse([]).columns[2], search: "echague"),
+                            ["Echagüe, Juan Carlos"])
+        }
+        test("picked values stay in the list while searching") {
+            try expectEqual(prelistenBrowseListValues(singers, search: "maure"), ["Dante, Carlos", "Mauré, Héctor"])
+        }
+    }
+
+    suite("Prelisten year range") {
+        func years(_ from: Int?, _ to: Int?) -> PrelistenYearRange { PrelistenYearRange(from: from, to: to) }
+        test("a blank field sets no range and lets every row through, with or without a year") {
+            try expectEqual(prelistenYearRange(" "), years(nil, nil))
+            try expect(prelistenYearRange("").contains(nil))
+            try expect(prelistenYearRange("").contains(1937))
+        }
+        test("two-digit years mean 19xx, so 35-38 is 1935 to 1938") {
+            try expectEqual(prelistenYearRange("35-38"), years(1935, 1938))
+        }
+        test("four-digit years, spaces and en dashes work too") {
+            try expectEqual(prelistenYearRange("1935 – 1945"), years(1935, 1945))
+            try expectEqual(prelistenYearRange("35-2005"), years(1935, 2005))
+        }
+        test("one year means just that year") {
+            try expectEqual(prelistenYearRange("40"), years(1940, 1940))
+        }
+        test("either end can be left open") {
+            try expectEqual(prelistenYearRange("40-"), years(1940, nil))
+            try expectEqual(prelistenYearRange("-45"), years(nil, 1945))
+            try expect(prelistenYearRange("40-").contains(1950))
+            try expect(!prelistenYearRange("40-").contains(1939))
+        }
+        test("bounds are inclusive, and typed backwards still work") {
+            let range = prelistenYearRange("45-35")
+            try expect(range.contains(1935))
+            try expect(range.contains(1945))
+            try expect(!range.contains(1946))
+        }
+        test("a row without a year drops out once a range is set") {
+            try expect(!prelistenYearRange("35-45").contains(nil))
+        }
+        test("half-typed or unreadable years set no bound, so typing doesn't empty the list") {
+            try expectEqual(prelistenYearRange("194"), years(nil, nil))
+            try expectEqual(prelistenYearRange("1935-194"), years(1935, nil))
+            try expectEqual(prelistenYearRange("abc"), years(nil, nil))
+            try expectEqual(prelistenYearRange("35-38-40"), years(nil, nil))
+        }
+    }
+
+    suite("Prelisten column browser lists") {
+        let standard: [PrelistenBrowseField] = [.genre, .artist, .album, .comment]
+        test("stored lists read back in order, skipping unknown and repeated names") {
+            try expectEqual(prelistenBrowseFields(stored: "comment,artist,bogus,artist"), [.comment, .artist])
+        }
+        test("nothing usable stored falls back to Genres, Artists, Albums, Comments") {
+            try expectEqual(prelistenBrowseFields(stored: ""), standard)
+            try expectEqual(prelistenBrowseFields(stored: "bogus"), standard)
+        }
+        test("showing a list puts it back in its usual place") {
+            try expectEqual(prelistenTogglingBrowseField(.composer, in: standard),
+                            [.genre, .artist, .composer, .album, .comment])
+            try expectEqual(prelistenTogglingBrowseField(.artist, in: [.album, .genre]), [.album, .genre, .artist])
+            try expectEqual(prelistenTogglingBrowseField(.genre, in: [.album]), [.genre, .album])
+        }
+        test("hiding a list removes it, but the last one stays") {
+            try expectEqual(prelistenTogglingBrowseField(.album, in: standard), [.genre, .artist, .comment])
+            try expectEqual(prelistenTogglingBrowseField(.genre, in: [.genre]), [.genre])
+        }
+        test("moving a list stops at either end") {
+            try expectEqual(prelistenMovingBrowseField(.album, by: -1, in: standard),
+                            [.genre, .album, .artist, .comment])
+            try expectEqual(prelistenMovingBrowseField(.genre, by: -1, in: standard), standard)
+            try expectEqual(prelistenMovingBrowseField(.comment, by: 1, in: standard), standard)
         }
     }
 }

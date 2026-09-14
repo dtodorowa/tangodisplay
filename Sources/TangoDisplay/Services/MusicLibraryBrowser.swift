@@ -10,10 +10,13 @@ struct PrelistenRow: Identifiable, Hashable {
     let title: String
     let artist: String
     let album: String
+    let composer: String
     let genre: String
     let year: Int?
     let comment: String?
     let grouping: String?
+    let plays: Int
+    let dateAdded: Date?
     let duration: Double
     /// nil when the track has no file on this Mac (cloud-only or moved).
     let fileURL: URL?
@@ -138,10 +141,13 @@ private actor MusicLibraryReader {
                 title: item.title,
                 artist: item.artist?.name ?? "",
                 album: item.album.title ?? "",
+                composer: item.composer,
                 genre: item.genre,
                 year: item.year > 0 ? Int(item.year) : nil,
                 comment: item.comments.flatMap { $0.isEmpty ? nil : $0 },
                 grouping: item.grouping.flatMap { $0.isEmpty ? nil : $0 },
+                plays: Int(item.playCount),
+                dateAdded: item.addedDate,
                 duration: Double(totalMs) / 1000,
                 fileURL: url,
                 trimStart: trim.start,
