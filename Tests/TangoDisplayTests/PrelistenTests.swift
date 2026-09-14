@@ -190,42 +190,25 @@ func runPrelistenTests() {
     }
 
     suite("Prelisten year range") {
-        func years(_ from: Int?, _ to: Int?) -> PrelistenYearRange { PrelistenYearRange(from: from, to: to) }
-        test("a blank field sets no range and lets every row through, with or without a year") {
-            try expectEqual(prelistenYearRange(" "), years(nil, nil))
-            try expect(prelistenYearRange("").contains(nil))
-            try expect(prelistenYearRange("").contains(1937))
+        test("no bounds lets every row through, with or without a year") {
+            try expect(prelistenYearInRange(nil, from: nil, to: nil))
+            try expect(prelistenYearInRange(1937, from: nil, to: nil))
         }
-        test("two-digit years mean 19xx, so 35-38 is 1935 to 1938") {
-            try expectEqual(prelistenYearRange("35-38"), years(1935, 1938))
+        test("bounds are inclusive") {
+            try expect(prelistenYearInRange(1935, from: 1935, to: 1945))
+            try expect(prelistenYearInRange(1945, from: 1935, to: 1945))
+            try expect(!prelistenYearInRange(1946, from: 1935, to: 1945))
         }
-        test("four-digit years, spaces and en dashes work too") {
-            try expectEqual(prelistenYearRange("1935 – 1945"), years(1935, 1945))
-            try expectEqual(prelistenYearRange("35-2005"), years(1935, 2005))
+        test("either bound can be left open") {
+            try expect(prelistenYearInRange(1950, from: 1940, to: nil))
+            try expect(!prelistenYearInRange(1939, from: 1940, to: nil))
+            try expect(prelistenYearInRange(1930, from: nil, to: 1940))
         }
-        test("one year means just that year") {
-            try expectEqual(prelistenYearRange("40"), years(1940, 1940))
+        test("bounds typed backwards still work") {
+            try expect(prelistenYearInRange(1940, from: 1945, to: 1935))
         }
-        test("either end can be left open") {
-            try expectEqual(prelistenYearRange("40-"), years(1940, nil))
-            try expectEqual(prelistenYearRange("-45"), years(nil, 1945))
-            try expect(prelistenYearRange("40-").contains(1950))
-            try expect(!prelistenYearRange("40-").contains(1939))
-        }
-        test("bounds are inclusive, and typed backwards still work") {
-            let range = prelistenYearRange("45-35")
-            try expect(range.contains(1935))
-            try expect(range.contains(1945))
-            try expect(!range.contains(1946))
-        }
-        test("a row without a year drops out once a range is set") {
-            try expect(!prelistenYearRange("35-45").contains(nil))
-        }
-        test("half-typed or unreadable years set no bound, so typing doesn't empty the list") {
-            try expectEqual(prelistenYearRange("194"), years(nil, nil))
-            try expectEqual(prelistenYearRange("1935-194"), years(1935, nil))
-            try expectEqual(prelistenYearRange("abc"), years(nil, nil))
-            try expectEqual(prelistenYearRange("35-38-40"), years(nil, nil))
+        test("a row without a year drops out once a bound is set") {
+            try expect(!prelistenYearInRange(nil, from: 1935, to: nil))
         }
     }
 

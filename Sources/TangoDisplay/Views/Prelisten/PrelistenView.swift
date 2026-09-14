@@ -41,11 +41,13 @@ struct PrelistenPane: View {
     @AppStorage(PrelistenDefaults.dockEdge) private var dockEdge: PrelistenDockEdge = .leading
     @State private var selectedRowIDs = Set<PrelistenRow.ID>()
     @State private var filter = ""
-    @State private var years = ""
+    @State private var yearFrom = ""
+    @State private var yearTo = ""
     /// Keyed by list rather than position, so a pick survives moving its list.
     @State private var browseSelections: [PrelistenBrowseField: Set<String>] = [:]
     @AppStorage(PrelistenDefaults.columnBrowser) private var showColumnBrowser = true
     @AppStorage(PrelistenDefaults.browseFields) private var storedBrowseFields = ""
+    @AppStorage(PrelistenDefaults.trackColumns) private var trackColumnsData = Data()
     @FocusState private var tableFocused: Bool
     @State private var copyMonitor: Any?
 
@@ -230,10 +232,16 @@ struct PrelistenPane: View {
     }
 
     private var yearRange: some View {
-        TextField("Years", text: $years)
-            .textFieldStyle(.roundedBorder)
-            .frame(width: 76)
-            .help("Years to show, like 35-45, 1940, or 40- for 1940 on. Two-digit years mean 19xx.")
+        HStack(spacing: 4) {
+            TextField("From", text: $yearFrom)
+                .frame(width: 50)
+            Text("–")
+                .foregroundColor(.secondary)
+            TextField("To", text: $yearTo)
+                .frame(width: 50)
+        }
+        .textFieldStyle(.roundedBorder)
+        .help("Only tracks from these years. Leave a side empty to leave it open.")
     }
 
     private var browseFields: [PrelistenBrowseField] { prelistenBrowseFields(stored: storedBrowseFields) }
@@ -244,24 +252,22 @@ struct PrelistenPane: View {
     /// Music's search narrows its column browser. Picks stay strict, so a picked singer the
     /// filter hides leaves the list empty instead of showing other singers.
     private var browseResult: PrelistenBrowseResult<PrelistenRow> {
-        let yearRange = prelistenYearRange(years)
-        let matching = filter.isEmpty && yearRange.isUnbounded ? library.rows : library.rows.filter { row in
-            yearRange.contains(row.year)
+        let from = Int(yearFrom.trimmingCharacters(in: .whitespaces))
+        let to = Int(yearTo.trimmingCharacters(in: .whitespaces))
+        let matching = filter.isEmpty && from == nil && to == nil ? library.rows : library.rows.filter { row in
+            prelistenYearInRange(row.year, from: from, to: to)
                 && prelistenRowMatches(filter, fields: [row.title, row.artist, row.album, row.composer,
                                                         row.genre, row.year.map(String.init) ?? "",
                                                         row.grouping ?? "", row.comment ?? ""])
         }
         // A hidden browser doesn't filter: nothing on screen would explain the missing rows.
         let fields = showColumnBrowser ? browseFields : []
-        return prelistenBrowse(matching, by: browseAccessors(fields), selections: orderedSelections(fields))
+        return prelistenBrowse(matching, by: browseValues(fields),
+                               selections: fields.map { browseSelections[$0] ?? [] })
     }
 
-    private func browseAccessors(_ fields: [PrelistenBrowseField]) -> [(PrelistenRow) -> String] {
+    private func browseValues(_ fields: [PrelistenBrowseField]) -> [(PrelistenRow) -> String] {
         fields.map { field in { field.value(of: $0) } }
-    }
-
-    private func orderedSelections(_ fields: [PrelistenBrowseField]) -> [Set<String>] {
-        fields.map { browseSelections[$0] ?? [] }
     }
 
     private func columnBrowser(_ columns: [PrelistenBrowseColumn]) -> some View {
@@ -287,8 +293,8 @@ struct PrelistenPane: View {
 
     private func pickBrowseValues(_ picked: Set<String?>, inColumn index: Int, of fields: [PrelistenBrowseField]) {
         let updated = prelistenBrowseSelections(
-            afterPicking: picked, inColumn: index, selections: orderedSelections(fields),
-            rows: library.rows, by: browseAccessors(fields))
+            afterPicking: picked, inColumn: index, selections: fields.map { browseSelections[$0] ?? [] },
+            rows: library.rows, by: browseValues(fields))
         for (field, selection) in zip(fields, updated) {
             browseSelections[field] = selection
         }
@@ -324,19 +330,17 @@ struct PrelistenPane: View {
     private func trackTable(_ rows: [PrelistenRow]) -> some View {
         Group {
             if #available(macOS 14.0, *) {
-                PrelistenTrackColumnsStorage { customization in
-                    withRowActions(rows, Table(of: PrelistenRow.self, selection: $selectedRowIDs,
-                                               columnCustomization: customization) {
-                        customizableColumns
-                    } rows: {
-                        ForEach(rows) { row in
-                            TableRow(row)
-                                .itemProvider { dragProvider(for: row) }
-                        }
-                    })
+                // Right-clicking the header hides and shows columns; dragging one reorders.
+                Table(of: PrelistenRow.self, selection: $selectedRowIDs, columnCustomization: trackColumns) {
+                    customizableColumns
+                } rows: {
+                    ForEach(rows) { row in
+                        TableRow(row)
+                            .itemProvider { dragProvider(for: row) }
+                    }
                 }
             } else {
-                withRowActions(rows, Table(of: PrelistenRow.self, selection: $selectedRowIDs) {
+                Table(of: PrelistenRow.self, selection: $selectedRowIDs) {
                     TableColumn("#") { row in indexCell(row) }
                         .width(34)
                     TableColumn("Title") { row in titleCell(row) }
@@ -354,31 +358,25 @@ struct PrelistenPane: View {
                         TableRow(row)
                             .itemProvider { dragProvider(for: row) }
                     }
-                })
+                }
             }
         }
-        .overlay { tableNotice }
-    }
-
-    /// Applied to the Table itself rather than a wrapper around it, so double-click and the
-    /// row menu find it.
-    private func withRowActions(_ rows: [PrelistenRow], _ table: some View) -> some View {
-        table
-            .contextMenu(forSelectionType: PrelistenRow.ID.self) { ids in
-                Button("Play") { play(ids, in: rows) }
-                    .disabled(ids.isEmpty)
-                Button("Add to Setlist") { addToSetlist(ids, from: rows) }
-                    .disabled(urls(for: ids, in: rows).isEmpty)
-                Button("Copy") { copyToPasteboard(ids, from: rows) }
-                    .disabled(urls(for: ids, in: rows).isEmpty)
-                Button("Show in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting(urls(for: ids, in: rows))
-                }
+        .contextMenu(forSelectionType: PrelistenRow.ID.self) { ids in
+            Button("Play") { play(ids, in: rows) }
+                .disabled(ids.isEmpty)
+            Button("Add to Setlist") { addToSetlist(ids, from: rows) }
                 .disabled(urls(for: ids, in: rows).isEmpty)
-            } primaryAction: { ids in
-                play(ids, in: rows)
+            Button("Copy") { copyToPasteboard(ids, from: rows) }
+                .disabled(urls(for: ids, in: rows).isEmpty)
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting(urls(for: ids, in: rows))
             }
-            .focused($tableFocused)
+            .disabled(urls(for: ids, in: rows).isEmpty)
+        } primaryAction: { ids in
+            play(ids, in: rows)
+        }
+        .focused($tableFocused)
+        .overlay { tableNotice }
     }
 
     @ViewBuilder
@@ -456,6 +454,18 @@ struct PrelistenPane: View {
             .customizationID("dateAdded")
             .defaultVisibility(.hidden)
         }
+    }
+
+    /// Saved as JSON: the customization type only exists from macOS 14, so it can't be a
+    /// stored property here.
+    @available(macOS 14.0, *)
+    private var trackColumns: Binding<TableColumnCustomization<PrelistenRow>> {
+        Binding(
+            get: {
+                (try? JSONDecoder().decode(TableColumnCustomization<PrelistenRow>.self, from: trackColumnsData))
+                    ?? TableColumnCustomization()
+            },
+            set: { trackColumnsData = (try? JSONEncoder().encode($0)) ?? Data() })
     }
 
     private func titleCell(_ row: PrelistenRow) -> some View {
@@ -554,6 +564,32 @@ struct PrelistenPane: View {
     }
 }
 
+private extension PrelistenBrowseField {
+    var title: String {
+        switch self {
+        case .genre: return "Genres"
+        case .artist: return "Artists"
+        case .composer: return "Composers"
+        case .album: return "Albums"
+        case .grouping: return "Groupings"
+        case .comment: return "Comments"
+        }
+    }
+
+    var singular: String { String(title.dropLast()) }
+
+    func value(of row: PrelistenRow) -> String {
+        switch self {
+        case .genre: return row.genre
+        case .artist: return row.artist
+        case .composer: return row.composer
+        case .album: return row.album
+        case .grouping: return row.grouping ?? ""
+        case .comment: return row.comment ?? ""
+        }
+    }
+}
+
 private extension PrelistenPlaylistNode {
     var icon: String {
         isFolder ? "folder" : isSmart ? "gearshape" : "music.note.list"
@@ -574,6 +610,50 @@ private struct PrelistenPlaylistMenuItems: View {
             } else {
                 Button(node.name) { select(node.id) }
             }
+        }
+    }
+}
+
+/// One list of the column browser: a search field, an All row, then the list's values.
+private struct PrelistenBrowseColumnList<MenuItems: View>: View {
+    let title: String
+    let allLabel: String
+    let column: PrelistenBrowseColumn
+    let pick: (Set<String?>) -> Void
+    @ViewBuilder let menu: () -> MenuItems
+    @State private var search = ""
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 3)
+                .contextMenu(menuItems: menu)
+            // Kept out of the context menu so the field's own Cut/Copy/Paste menu still works.
+            TextField("Search", text: $search)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
+            Divider()
+            List(selection: Binding(
+                get: { column.selection.isEmpty ? [nil] : Set(column.selection.map { Optional($0) }) },
+                set: pick
+            )) {
+                Text(allLabel)
+                    .tag(String?.none)
+                ForEach(prelistenBrowseListValues(column, search: search), id: \.self) { value in
+                    Text(value)
+                        .lineLimit(1)
+                        .foregroundColor(column.unmatched.contains(value) ? .secondary : .primary)
+                        .help(value)
+                        .tag(Optional(value))
+                }
+            }
+            .listStyle(.plain)
+            .contextMenu(menuItems: menu)
         }
     }
 }

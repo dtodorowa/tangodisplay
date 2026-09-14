@@ -95,48 +95,14 @@ public func prelistenRowMatches(_ query: String, fields: [String]) -> Bool {
     }
 }
 
-public struct PrelistenYearRange: Equatable {
-    public let from: Int?
-    public let to: Int?
-
-    public init(from: Int?, to: Int?) {
-        self.from = from
-        self.to = to
-    }
-
-    public var isUnbounded: Bool { from == nil && to == nil }
-
-    /// Inclusive, and bounds typed the wrong way round still work. A row without a year drops
-    /// out once a bound is set, since it can't be shown to be in range.
-    public func contains(_ year: Int?) -> Bool {
-        if isUnbounded { return true }
-        guard let year else { return false }
-        var low = from ?? .min, high = to ?? .max
-        if low > high { swap(&low, &high) }
-        return (low...high).contains(year)
-    }
-}
-
-/// Reads the Years field: "35-38", "1935–1945", "40" for one year, "40-" or "-45" for an open
-/// end. Two digits mean 19xx, where most tango recordings are; later years need four digits.
-/// A half-typed year like "194" sets no bound, so the list doesn't empty while typing.
-public func prelistenYearRange(_ text: String) -> PrelistenYearRange {
-    func year(_ part: Substring) -> Int? {
-        let digits = part.trimmingCharacters(in: .whitespaces)
-        guard digits.allSatisfy(\.isASCII), let value = Int(digits) else { return nil }
-        switch digits.count {
-        case 2: return 1900 + value
-        case 4: return value
-        default: return nil
-        }
-    }
-    let parts = text.split(separator: "-", omittingEmptySubsequences: false)
-        .flatMap { $0.split(separator: "–", omittingEmptySubsequences: false) }
-    switch parts.count {
-    case 1: return PrelistenYearRange(from: year(parts[0]), to: year(parts[0]))
-    case 2: return PrelistenYearRange(from: year(parts[0]), to: year(parts[1]))
-    default: return PrelistenYearRange(from: nil, to: nil)
-    }
+/// Bounds are inclusive, either can be left open, and bounds typed the wrong way round still
+/// work. A row without a year drops out once a bound is set, since it can't be in range.
+public func prelistenYearInRange(_ year: Int?, from: Int?, to: Int?) -> Bool {
+    if from == nil && to == nil { return true }
+    guard let year else { return false }
+    var low = from ?? .min, high = to ?? .max
+    if low > high { swap(&low, &high) }
+    return (low...high).contains(year)
 }
 
 // MARK: - Column browser
