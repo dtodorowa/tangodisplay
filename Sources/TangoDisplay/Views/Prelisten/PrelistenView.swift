@@ -6,6 +6,7 @@ enum PrelistenDefaults {
     static let docked = "prelistenDocked"
     static let dockEdge = "prelistenDockEdge"
     static let dockFraction = "prelistenDockFraction"
+    static let columnBrowser = "prelistenColumnBrowser"
 }
 
 enum PrelistenDockEdge: String {
@@ -38,6 +39,8 @@ struct PrelistenPane: View {
     @AppStorage(PrelistenDefaults.dockEdge) private var dockEdge: PrelistenDockEdge = .leading
     @State private var selectedRowIDs = Set<PrelistenRow.ID>()
     @State private var filter = ""
+    @State private var browseSelections = [Set<String>](repeating: [], count: PrelistenPane.browseColumns.count)
+    @AppStorage(PrelistenDefaults.columnBrowser) private var showColumnBrowser = true
     @FocusState private var tableFocused: Bool
     @State private var copyMonitor: Any?
 
@@ -53,10 +56,10 @@ struct PrelistenPane: View {
                         playlistSidebar
                             .frame(width: min(260, max(180, geo.size.width * 0.25)))
                         Divider()
-                        detail(compact: false)
+                        detail(compact: false, height: geo.size.height)
                     }
                 } else {
-                    detail(compact: true)
+                    detail(compact: true, height: geo.size.height)
                 }
             }
         }
@@ -94,7 +97,11 @@ struct PrelistenPane: View {
                 copyMonitor = nil
             }
         }
-        .onChange(of: library.selectedPlaylistID) { _ in selectedRowIDs.removeAll() }
+        .onChange(of: library.selectedPlaylistID) { _ in
+            selectedRowIDs.removeAll()
+            // A singer picked in one playlist would otherwise quietly narrow the next.
+            browseSelections = browseSelections.map { _ in [] }
+        }
     }
 
     private var setlistIsPlaying: Bool {
@@ -162,21 +169,27 @@ struct PrelistenPane: View {
 
     // MARK: Tracks
 
-    private func detail(compact: Bool) -> some View {
-        VStack(spacing: 0) {
+    private func detail(compact: Bool, height: CGFloat) -> some View {
+        let browse = browseResult
+        return VStack(spacing: 0) {
             PrelistenTransportBar(player: player, clock: player.clock,
                                   devices: appState.availableAudioOutputDevices,
                                   setlistIsPlaying: setlistIsPlaying)
             Divider()
-            browseBar(compact: compact)
+            browseBar(compact: compact, rows: browse.rows)
             Divider()
-            trackTable
+            if showColumnBrowser && library.selectedPlaylistID != nil {
+                // About five values per list, like Music; less when a docked pane is short.
+                columnBrowser(browse.columns)
+                    .frame(height: min(150, max(60, height * 0.4)))
+                Divider()
+            }
+            trackTable(browse.rows)
         }
     }
 
-    private func browseBar(compact: Bool) -> some View {
-        let rows = visibleRows
-        return HStack(spacing: 8) {
+    private func browseBar(compact: Bool, rows: [PrelistenRow]) -> some View {
+        HStack(spacing: 8) {
             if compact {
                 playlistMenu
                     .frame(maxWidth: 220)
@@ -184,6 +197,12 @@ struct PrelistenPane: View {
             TextField("Filter tracks", text: $filter)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 220)
+            Toggle(isOn: $showColumnBrowser) {
+                Image(systemName: "rectangle.split.3x1")
+            }
+            .toggleStyle(.button)
+            .help(showColumnBrowser ? "Hide Genres, Artists, Albums and Comments"
+                                    : "Show Genres, Artists, Albums and Comments")
             Spacer(minLength: 0)
             Button {
                 addToSetlist(selectedRowIDs, from: rows)
@@ -205,18 +224,50 @@ struct PrelistenPane: View {
         .padding(.vertical, 6)
     }
 
-    private var visibleRows: [PrelistenRow] {
-        guard !filter.isEmpty else { return library.rows }
-        return library.rows.filter { row in
-            prelistenRowMatches(filter, fields: [row.title, row.artist, row.genre,
+    private static let browseColumns: [(title: String, singular: String, value: (PrelistenRow) -> String)] = [
+        ("Genres", "Genre", { $0.genre }),
+        ("Artists", "Artist", { $0.artist }),
+        ("Albums", "Album", { $0.album }),
+        ("Comments", "Comment", { $0.comment ?? "" }),
+    ]
+
+    private var visibleRows: [PrelistenRow] { browseResult.rows }
+
+    /// The column browser over the whole playlist, then the text filter over what it left.
+    /// Lists built from filtered rows would lose a picked singer the filter hides, and that
+    /// column would quietly fall back to All.
+    private var browseResult: (columns: [PrelistenBrowseColumn], rows: [PrelistenRow]) {
+        // A hidden browser doesn't filter: nothing on screen would explain the missing rows.
+        let fields = showColumnBrowser ? Self.browseColumns.map { $0.value } : []
+        let browse = prelistenBrowse(library.rows, by: fields, selections: browseSelections)
+        guard !filter.isEmpty else { return (browse.columns, browse.rows) }
+        return (browse.columns, browse.rows.filter { row in
+            prelistenRowMatches(filter, fields: [row.title, row.artist, row.album, row.genre,
                                                  row.year.map(String.init) ?? "",
                                                  row.grouping ?? "", row.comment ?? ""])
+        })
+    }
+
+    private func columnBrowser(_ columns: [PrelistenBrowseColumn]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(columns.indices, id: \.self) { index in
+                if index > 0 { Divider() }
+                let spec = Self.browseColumns[index]
+                let count = columns[index].values.count
+                PrelistenBrowseColumnList(
+                    title: spec.title,
+                    allLabel: "All (\(count) \(count == 1 ? spec.singular : spec.title))",
+                    column: columns[index]
+                ) { picked in
+                    browseSelections = prelistenBrowseSelections(afterPicking: picked, inColumn: index,
+                                                                 of: columns)
+                }
+            }
         }
     }
 
-    private var trackTable: some View {
-        let rows = visibleRows
-        return Table(of: PrelistenRow.self, selection: $selectedRowIDs) {
+    private func trackTable(_ rows: [PrelistenRow]) -> some View {
+        Table(of: PrelistenRow.self, selection: $selectedRowIDs) {
             TableColumn("#") { row in
                 indexCell(row)
             }
@@ -228,6 +279,9 @@ struct PrelistenPane: View {
             }
             TableColumn("Artist") { row in
                 Text(row.artist).foregroundColor(rowColor(row))
+            }
+            TableColumn("Album") { row in
+                Text(row.album).foregroundColor(rowColor(row))
             }
             TableColumn("Genre") { row in
                 Text(row.genre).foregroundColor(rowColor(row))
@@ -243,6 +297,9 @@ struct PrelistenPane: View {
                     .foregroundColor(rowColor(row))
             }
             .width(52)
+            TableColumn("Comments") { row in
+                Text(row.comment ?? "").foregroundColor(rowColor(row))
+            }
         } rows: {
             ForEach(rows) { row in
                 TableRow(row)
@@ -401,6 +458,39 @@ private struct PrelistenPlaylistMenuItems: View {
             } else {
                 Button(node.name) { select(node.id) }
             }
+        }
+    }
+}
+
+/// One column of the column browser: an All row, then the column's values.
+private struct PrelistenBrowseColumnList: View {
+    let title: String
+    let allLabel: String
+    let column: PrelistenBrowseColumn
+    let pick: (Set<String?>) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 3)
+            Divider()
+            List(selection: Binding(
+                get: { column.selection.isEmpty ? [nil] : Set(column.selection.map { Optional($0) }) },
+                set: pick
+            )) {
+                Text(allLabel)
+                    .tag(String?.none)
+                ForEach(column.values, id: \.self) { value in
+                    Text(value)
+                        .lineLimit(1)
+                        .help(value)
+                        .tag(Optional(value))
+                }
+            }
+            .listStyle(.plain)
         }
     }
 }

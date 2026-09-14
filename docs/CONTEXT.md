@@ -76,6 +76,10 @@ _Avoid_: up next
 The audio device prelisten plays to, chosen separately from the main output. Usually headphones, or class speakers when teaching.
 _Avoid_: cue output, headphones
 
+**Column browser**:
+Genres, Artists, Albums and Comments lists above a playlist's rows, as in Music. Picking values in one list narrows the lists to its right and the rows. Some DJs keep the singer in Comments, so picking one there shows only that singer's rows.
+_Avoid_: filters, facets, tag browser
+
 **Auto-advance**:
 Prelisten moving on to the next row when one ends. With it off, prelisten stops after each row.
 _Avoid_: autoplay, continuous play

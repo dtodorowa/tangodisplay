@@ -95,6 +95,58 @@ public func prelistenRowMatches(_ query: String, fields: [String]) -> Bool {
     }
 }
 
+// MARK: - Column browser
+
+public struct PrelistenBrowseColumn: Equatable {
+    /// Distinct non-blank values among the rows left by the columns to the left, in Finder order.
+    public let values: [String]
+    /// The stored selection narrowed to `values`. Empty means All.
+    public let selection: Set<String>
+}
+
+public struct PrelistenBrowseResult<Row> {
+    public let columns: [PrelistenBrowseColumn]
+    public let rows: [Row]
+}
+
+/// Music's column browser: each column lists what's left after the columns to its left, and
+/// the rows are what's left after all of them. A stored selection that isn't among a column's
+/// values counts as All, so picking another artist doesn't empty the list just because the
+/// singer picked for the previous one isn't there.
+public func prelistenBrowse<Row>(_ rows: [Row], by fields: [(Row) -> String],
+                                 selections: [Set<String>]) -> PrelistenBrowseResult<Row> {
+    func value(_ row: Row, _ field: (Row) -> String) -> String {
+        field(row).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    var remaining = rows
+    var columns: [PrelistenBrowseColumn] = []
+    for (index, field) in fields.enumerated() {
+        let distinct = Set(remaining.lazy.map { value($0, field) }.filter { !$0.isEmpty })
+        let stored = index < selections.count ? selections[index] : []
+        let selection = stored.intersection(distinct)
+        columns.append(PrelistenBrowseColumn(
+            values: distinct.sorted { $0.localizedStandardCompare($1) == .orderedAscending },
+            selection: selection))
+        if !selection.isEmpty {
+            remaining = remaining.filter { selection.contains(value($0, field)) }
+        }
+    }
+    return PrelistenBrowseResult(columns: columns, rows: remaining)
+}
+
+/// Applies a click in one column's list. `picked` is that list's new selection, nil standing
+/// for its All row. All and values exclude each other: picking All clears the column, picking
+/// a value while All shows replaces it. The other columns keep only what they show, so a
+/// selection an earlier pick hid doesn't come back several clicks later.
+public func prelistenBrowseSelections(afterPicking picked: Set<String?>, inColumn index: Int,
+                                      of columns: [PrelistenBrowseColumn]) -> [Set<String>] {
+    var selections = columns.map(\.selection)
+    guard selections.indices.contains(index) else { return selections }
+    let shown = selections[index]
+    selections[index] = picked.contains(nil) && !shown.isEmpty ? [] : Set(picked.compactMap { $0 })
+    return selections
+}
+
 public func formatPrelistenTime(_ seconds: Double) -> String {
     guard seconds.isFinite, seconds > 0 else { return "0:00" }
     let total = Int(seconds.rounded(.down))

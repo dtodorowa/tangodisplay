@@ -9,6 +9,7 @@ struct PrelistenRow: Identifiable, Hashable {
     let persistentID: String
     let title: String
     let artist: String
+    let album: String
     let genre: String
     let year: Int?
     let comment: String?
@@ -136,6 +137,7 @@ private actor MusicLibraryReader {
                 persistentID: Self.hexID(item.persistentID),
                 title: item.title,
                 artist: item.artist?.name ?? "",
+                album: item.album.title ?? "",
                 genre: item.genre,
                 year: item.year > 0 ? Int(item.year) : nil,
                 comment: item.comments.flatMap { $0.isEmpty ? nil : $0 },
