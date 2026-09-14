@@ -52,11 +52,13 @@ final class PrelistenPlayer: ObservableObject {
     /// Bumped before every node stop, so a replaced segment's completion handler is ignored.
     private var generation = 0
     private let settings: AppSettings
+    private let trackFiles: PrelistenTrackFiles
     private let deviceQueue = DispatchQueue(label: "com.tangodisplay.prelisten-device", qos: .userInitiated)
     private var cancellables = Set<AnyCancellable>()
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, trackFiles: PrelistenTrackFiles) {
         self.settings = settings
+        self.trackFiles = trackFiles
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: nil)
 
@@ -128,7 +130,8 @@ final class PrelistenPlayer: ObservableObject {
         stopNode()
         currentIndex = index
         let row = queue[index]
-        guard let url = row.fileURL else {
+        // The queue is a snapshot, possibly taken before this row's location was looked up.
+        guard let url = row.fileURL ?? (row.isLocalFile ? trackFiles.location(forPersistentID: row.persistentID) : nil) else {
             file = nil
             isPlaying = false
             errorMessage = "“\(row.title)” isn't downloaded to this Mac, so it can't play here."

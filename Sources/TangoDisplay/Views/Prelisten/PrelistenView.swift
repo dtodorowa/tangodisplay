@@ -216,7 +216,7 @@ struct PrelistenPane: View {
             } label: {
                 Label("Add to Setlist", systemImage: "text.badge.plus")
             }
-            .disabled(urls(for: selectedRowIDs, in: rows).isEmpty)
+            .disabled(playable(selectedRowIDs, in: rows).isEmpty)
             .help("Append the selected tracks to the setlist")
             Button {
                 library.refresh()
@@ -365,13 +365,13 @@ struct PrelistenPane: View {
             Button("Play") { play(ids, in: rows) }
                 .disabled(ids.isEmpty)
             Button("Add to Setlist") { addToSetlist(ids, from: rows) }
-                .disabled(urls(for: ids, in: rows).isEmpty)
+                .disabled(playable(ids, in: rows).isEmpty)
             Button("Copy") { copyToPasteboard(ids, from: rows) }
-                .disabled(urls(for: ids, in: rows).isEmpty)
+                .disabled(playable(ids, in: rows).isEmpty)
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting(urls(for: ids, in: rows))
             }
-            .disabled(urls(for: ids, in: rows).isEmpty)
+            .disabled(playable(ids, in: rows).isEmpty)
         } primaryAction: { ids in
             play(ids, in: rows)
         }
@@ -501,13 +501,20 @@ struct PrelistenPane: View {
     }
 
     private func rowColor(_ row: PrelistenRow) -> Color {
-        row.fileURL == nil ? .secondary : .primary
+        row.isLocalFile ? .primary : .secondary
     }
 
     // MARK: Actions
 
+    /// Looks the location up when the background pass hasn't reached this row yet. Only for
+    /// rows a user action touches, since each lookup waits on Music's library service.
+    private func fileURL(for row: PrelistenRow) -> URL? {
+        guard row.isLocalFile else { return nil }
+        return row.fileURL ?? library.trackFiles.location(forPersistentID: row.persistentID)
+    }
+
     private func dragProvider(for row: PrelistenRow) -> NSItemProvider? {
-        guard let url = row.fileURL else { return nil }
+        guard let url = fileURL(for: row) else { return nil }
         let provider = NSItemProvider(object: url as NSURL)
         provider.registerDataRepresentation(forTypeIdentifier: NSPasteboard.PasteboardType.prelistenRow.rawValue,
                                             visibility: .all) { completion in
@@ -522,15 +529,24 @@ struct PrelistenPane: View {
         player.play(rows, startingAt: index, sourceID: library.selectedPlaylistID)
     }
 
+    /// Enables actions without looking anything up while the table draws.
+    private func playable(_ ids: Set<PrelistenRow.ID>, in rows: [PrelistenRow]) -> [PrelistenRow] {
+        rows.filter { ids.contains($0.id) && $0.isLocalFile }
+    }
+
     private func urls(for ids: Set<PrelistenRow.ID>, in rows: [PrelistenRow]) -> [URL] {
-        rows.filter { ids.contains($0.id) }.compactMap(\.fileURL)
+        playable(ids, in: rows).compactMap { fileURL(for: $0) }
+    }
+
+    private func filesWithURLs(_ ids: Set<PrelistenRow.ID>, in rows: [PrelistenRow]) -> [(row: PrelistenRow, url: URL)] {
+        playable(ids, in: rows).compactMap { row in fileURL(for: row).map { (row: row, url: $0) } }
     }
 
     private func addToSetlist(_ ids: Set<PrelistenRow.ID>, from rows: [PrelistenRow]) {
-        let picked = rows.filter { ids.contains($0.id) && $0.fileURL != nil }
+        let picked = filesWithURLs(ids, in: rows)
         guard !picked.isEmpty else { return }
         SetlistManager.warmMusicTrims()
-        appState.setlist.insertURLs(picked.compactMap(\.fileURL), before: nil, importMusicTimes: true,
+        appState.setlist.insertURLs(picked.map { $0.url }, before: nil, importMusicTimes: true,
                                     musicIDs: MusicDragIDs(musicMetadataPlist: musicMetadata(for: picked)))
     }
 
@@ -538,27 +554,26 @@ struct PrelistenPane: View {
     /// "Title — Artist" text for notes or messages. Returns false when nothing was copyable.
     @discardableResult
     private func copyToPasteboard(_ ids: Set<PrelistenRow.ID>, from rows: [PrelistenRow]) -> Bool {
-        let items: [NSPasteboardItem] = rows.filter { ids.contains($0.id) }.compactMap { row in
-            guard let url = row.fileURL else { return nil }
+        let picked = filesWithURLs(ids, in: rows)
+        let items: [NSPasteboardItem] = picked.map { pick in
             let item = NSPasteboardItem()
-            item.setString(url.absoluteString, forType: .fileURL)
-            item.setString(row.artist.isEmpty ? row.title : "\(row.title) — \(row.artist)", forType: .string)
+            item.setString(pick.url.absoluteString, forType: .fileURL)
+            item.setString(pick.row.artist.isEmpty ? pick.row.title : "\(pick.row.title) — \(pick.row.artist)",
+                           forType: .string)
             return item
         }
         guard let first = items.first else { return false }
-        first.setPropertyList(musicMetadata(for: rows.filter { ids.contains($0.id) }),
-                              forType: .prelistenMetadata)
+        first.setPropertyList(musicMetadata(for: picked), forType: .prelistenMetadata)
         NSPasteboard.general.clearContents()
         return NSPasteboard.general.writeObjects(items)
     }
 
     /// Shaped like Music's drag and copy plist, so the setlist imports start/stop times the
     /// same way it does for tracks coming from Music.
-    private func musicMetadata(for rows: [PrelistenRow]) -> [String: Any] {
+    private func musicMetadata(for picked: [(row: PrelistenRow, url: URL)]) -> [String: Any] {
         var tracks: [String: Any] = [:]
-        for row in rows {
-            guard let url = row.fileURL else { continue }
-            tracks[String(row.id)] = ["Location": url.absoluteString, "Persistent ID": row.persistentID]
+        for pick in picked {
+            tracks[String(pick.row.id)] = ["Location": pick.url.absoluteString, "Persistent ID": pick.row.persistentID]
         }
         return ["Tracks": tracks]
     }
