@@ -4,6 +4,23 @@
         <title>TangoDisplay</title>
         <link>https://github.com/richardsladetdj-creator/TangoDisplay</link>
         <item>
+            <title>Version 3.32.0</title>
+            <pubDate>Thu, 17 Sep 2026 17:42:08 +0000</pubDate>
+            <sparkle:version>111</sparkle:version>
+            <sparkle:shortVersionString>3.32.0</sparkle:shortVersionString>
+            <description><![CDATA[
+                <ul>
+                    <li><b>Edit Upcoming Info:</b> right-click a cortina in the setlist and choose <b>Edit Upcoming Info&#8230;</b> to type the artist, singer and year shown in the &#8220;Coming Up&#8221; preview during that cortina &#8212; for mixed tandas where the first track&#8217;s own details would misdescribe what&#8217;s next. Year is free text (&#8220;1941-43&#8221;). Blank fields fall back to the real details, and editing the cortina that is already playing updates the display immediately. Built-in player only.</li>
+                    <li><b>Playback survives sleep:</b> waking the Mac no longer quits TangoDisplay or leaves it silent. The audio engine is restarted with retries while the output device comes back, exclusive (hog) mode is re-claimed, and if the device does not return playback stops with an <b>Audio Device Unavailable</b> alert offering Retry.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/richardsladetdj-creator/TangoDisplay/releases/download/v3.32.0/TangoDisplay-v3.32.0-universal.zip"
+                sparkle:edSignature="GbdkxEtVqtqYRTADVVVpEvNhVmMxI6mkcW51H0eqafTq1i9MVjRLmsqhlQVFxB79BLDmKSMiIKVfAkzBxseGDQ=="
+                length="6954872"
+                type="application/zip"/>
+        </item>
+        <item>
             <title>Version 3.31.0</title>
             <pubDate>Sun, 06 Sep 2026 11:24:53 +0000</pubDate>
             <sparkle:version>110</sparkle:version>
