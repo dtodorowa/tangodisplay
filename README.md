@@ -49,7 +49,7 @@ A native macOS menu-bar app that shows a clean, fullscreen dancer display on an 
 ### Option A — Download pre-built app (easiest)
 
 1. Go to the [Releases](https://github.com/richardsladetdj-creator/TangoDisplay/releases) page
-2. Download `TangoDisplay-v3.31.0-universal.zip` (works on both Apple Silicon and Intel Macs)
+2. Download `TangoDisplay-v3.32.0-universal.zip` (works on both Apple Silicon and Intel Macs)
 3. Unzip and drag `TangoDisplay.app` to your `/Applications` folder
 4. **Right-click › Open** on first launch (required because the app is ad-hoc signed, not notarised)
 5. Grant the permissions macOS requests (see [Permissions](#permissions) below)
@@ -135,6 +135,10 @@ Key design decisions:
 ---
 
 ## Changelog
+
+### v3.32.0
+- **Edit Upcoming Info:** right-click a cortina in the setlist and choose **Edit Upcoming Info…** to type the artist, singer and year shown in the "Coming Up" preview during that cortina — for mixed tandas where the first track's own details would misdescribe what's next. Year is free text ("1941-43"). Blank fields fall back to the real details, and editing the cortina that is already playing updates the display immediately. Built-in player only.
+- **Playback survives sleep:** waking the Mac no longer quits TangoDisplay or leaves it silent. The audio engine is restarted with retries while the output device comes back, exclusive (hog) mode is re-claimed, and if the device does not return playback stops with an **Audio Device Unavailable** alert offering Retry.
 
 ### v3.31.0
 - **Shellac Restoration:** new Restoration button in the Setlist toolbar, with Declick and Dehum filters for 78 rpm transfers, running ahead of the equaliser. Off by default. Per-track overrides (right-click a row) outrank both the master switch and the cortina skip, so a single shellac transfer can be repaired in an otherwise unrestored set. The filters are the DSP cores from [ShellacFilters](https://github.com/shaforostoff/shellacfilters) by Nick Shaforostov (MIT), built on the [Airwindows](https://www.airwindows.com) framework by Chris Johnson; the Audio Unit wrapper is adapted from [EmbraceNG](https://github.com/shaforostoff/EmbraceNG) (© 2024 Ricci Adams). See [Credits](#credits).

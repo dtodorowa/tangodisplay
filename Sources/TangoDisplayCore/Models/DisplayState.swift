@@ -31,6 +31,7 @@ public struct DisplayState: Equatable, Hashable {
     public var tandaPosition: TandaPosition?
     public var overrideText: String?
     public var nextTrackIsPerformance: Bool = false  // true when next tanda starts with a performance track
+    public var nextTrackOverride: UpcomingOverride?  // DJ-edited Coming Up details for this cortina
 
     public init(
         mode: DisplayMode = .idle,
@@ -38,7 +39,8 @@ public struct DisplayState: Equatable, Hashable {
         nextTrack: Track? = nil,
         tandaPosition: TandaPosition? = nil,
         overrideText: String? = nil,
-        nextTrackIsPerformance: Bool = false
+        nextTrackIsPerformance: Bool = false,
+        nextTrackOverride: UpcomingOverride? = nil
     ) {
         self.mode = mode
         self.currentTrack = currentTrack
@@ -46,5 +48,6 @@ public struct DisplayState: Equatable, Hashable {
         self.tandaPosition = tandaPosition
         self.overrideText = overrideText
         self.nextTrackIsPerformance = nextTrackIsPerformance
+        self.nextTrackOverride = nextTrackOverride
     }
 }

@@ -1167,6 +1167,7 @@ runAutoReplayGainTests()
 runAudioUnitPluginTests()
 runRestorationTests()
 runSliderSnapTests()
+runUpcomingOverrideTests()
 
 print("\n════════════════════════════════")
 let icon = totalFailed == 0 ? "✓" : "✗"

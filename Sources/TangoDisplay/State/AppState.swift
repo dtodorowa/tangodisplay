@@ -416,8 +416,10 @@ final class AppState: ObservableObject {
         // double-clicked a cortina — the playlist context only refreshes every 20s.
         // For the local player, use the UUID-based entry lookup so that duplicate
         // cortina files (same persistentID) resolve to the correct occurrence.
-        if let player = localPlayer,
-           let id = player.currentEntryID,
+        let cortinaEntry = localPlayer?.currentEntryID.flatMap { id in
+            setlist.entries.first(where: { $0.id == id })
+        }
+        if let id = cortinaEntry?.id,
            let idx = setlist.entries.firstIndex(where: { $0.id == id }) {
             playlistCurrentIndex = idx
         } else if let tracks = playlistTracks,
@@ -437,17 +439,12 @@ final class AppState: ObservableObject {
         trackHistory.removeAll()
 
         // Last tanda: deactivate (previous tanda ended); re-activate if this cortina is marked
-        isLastTandaActive = false
-        if let player = localPlayer,
-           let id = player.currentEntryID,
-           setlist.entries.first(where: { $0.id == id })?.isLastTanda == true {
-            isLastTandaActive = true
-        }
+        isLastTandaActive = (cortinaEntry?.isLastTanda == true)
 
         // Detect whether the first dance track after this cortina is a performance track
         // (local player only — external players don't have per-entry isPerformance metadata).
         var nextIsPerformance = false
-        if let player = localPlayer, let currentID = player.currentEntryID {
+        if let currentID = cortinaEntry?.id {
             let entries = setlist.entries
             if let currentIdx = entries.firstIndex(where: { $0.id == currentID }) {
                 for i in (currentIdx + 1)..<entries.count {
@@ -466,7 +463,8 @@ final class AppState: ObservableObject {
             nextTrack: nextTrack,
             tandaPosition: nil,
             overrideText: nil,
-            nextTrackIsPerformance: nextIsPerformance
+            nextTrackIsPerformance: nextIsPerformance,
+            nextTrackOverride: cortinaEntry?.upcomingOverride
         )
         currentArtwork = nil
         displayedArtworkTrackID = nil
@@ -764,6 +762,28 @@ final class AppState: ObservableObject {
     func syncVolume(_ v: Float) {
         settings.builtInVolume = v
         localPlayer?.volume = v
+    }
+
+    // MARK: - Appearance
+
+    var activeProfile: AppearanceProfile {
+        if let draft = draftProfile { return draft }
+        let all = profileStore.allProfiles
+        if let id = settings.activeProfileID,
+           let found = all.first(where: { $0.id == id }) {
+            return found
+        }
+        return AppearanceProfile.classic
+    }
+
+    // MARK: - Upcoming info override
+
+    /// Push an edited override onto the live display when the edited cortina is
+    /// the one currently playing. Mutates the field directly rather than re-running
+    /// handleCortinaTrack, which would also refetch the playlist and reschedule auto-fade.
+    func applyUpcomingOverride(_ o: UpcomingOverride?, forCortinaEntry id: UUID) {
+        guard displayState.mode == .cortina, localPlayer?.currentEntryID == id else { return }
+        displayState.nextTrackOverride = (o?.isEmpty ?? true) ? nil : o
     }
 
     // MARK: - Display list

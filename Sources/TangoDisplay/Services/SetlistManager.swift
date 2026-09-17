@@ -31,10 +31,11 @@ struct SetlistEntry: Identifiable, Codable {
     var trimStartSeconds: Double? = nil   // nil = play from file start
     var trimEndSeconds: Double? = nil      // nil = play to file end
     var restorationOverride: Bool? = nil   // nil = follow global rule; true = force skip; false = force apply
+    var upcomingOverride: UpcomingOverride? = nil  // cortina only: DJ-edited "Coming Up" details for the next tanda
     var autoGapApplied: Bool = false   // transient: true while auto-gap preroll is scheduled before this track
 
     enum CodingKeys: String, CodingKey {
-        case id, fileURL, track, state, duration, autoGapOverride, ignoresAutoFade, isLastTanda, isPerformance, repeatTrack, pluginConfigurationID, tagColor, trimStartSeconds, trimEndSeconds, restorationOverride
+        case id, fileURL, track, state, duration, autoGapOverride, ignoresAutoFade, isLastTanda, isPerformance, repeatTrack, pluginConfigurationID, tagColor, trimStartSeconds, trimEndSeconds, restorationOverride, upcomingOverride
         // autoGapApplied is intentionally excluded — reset each playback session
     }
 
@@ -82,6 +83,7 @@ struct SetlistEntry: Identifiable, Codable {
         trimStartSeconds = try c.decodeIfPresent(Double.self, forKey: .trimStartSeconds)
         trimEndSeconds = try c.decodeIfPresent(Double.self, forKey: .trimEndSeconds)
         restorationOverride = try c.decodeIfPresent(Bool.self, forKey: .restorationOverride)
+        upcomingOverride = try c.decodeIfPresent(UpcomingOverride.self, forKey: .upcomingOverride)
         autoGapApplied = false
     }
 }
@@ -292,6 +294,12 @@ final class SetlistManager: ObservableObject {
     }
 
     func clearTrim(for id: UUID) { setTrim(start: nil, end: nil, for: id) }
+
+    func setUpcomingOverride(_ o: UpcomingOverride?, for id: UUID) {
+        guard let i = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[i].upcomingOverride = (o?.isEmpty ?? true) ? nil : o
+        save()
+    }
 
     func setPluginConfiguration(_ configID: UUID?, for ids: Set<UUID>) {
         for id in ids {

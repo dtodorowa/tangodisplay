@@ -159,6 +159,7 @@ Right-click any row:
 | **Ignore Auto-gap before this Track** | Disables auto-gap for this track only. Shows as **Resume Auto-gap** when already set; click again to re-enable it. |
 | **Skip Auto-fade** | Disables auto-fade for this cortina track only, re-enabling the Fade & Stop and Fade & Continue buttons for manual control. Available only when Auto-fade is enabled and fading has not yet started. |
 | **Mark as Last Tanda** | Marks this cortina as the last tanda. TangoDisplay will automatically activate the Last Tanda label when this cortina starts and deactivate it when the next cortina begins. A red flag appears on the row. Shows as **Remove Last Tanda** when already set. Available only on cortina tracks. Requires Last Tanda label text to be configured in Appearance Settings. |
+| **Edit Upcoming Info…** | Opens an editor for the artist, singer and year shown in the "Coming Up" preview during this cortina — for mixed tandas whose first track would misdescribe what's next. A pencil icon appears on the row once set. Shows **Clear Upcoming Info** alongside when already set. Available only on cortina tracks that have not finished playing. See [Edit Upcoming Info](#edit-upcoming-info) below. |
 | **Mark as Performance** | Marks this track as a guest performance track. When it plays, the dancer display switches to the custom Performance view instead of normal track info. Shows as **Remove Performance** when already set. See [Performance Tracks](#performance-tracks) below. |
 | **Tag Colour** | Opens a sub-menu to assign a colour dot (red, orange, yellow, green, blue, purple) to the row for visual organisation, or **Clear Tag Colour** to remove it. See [Track Tags](#track-tags) below. |
 
@@ -321,6 +322,34 @@ The **Last Tanda** toggle on the **Live** screen always takes priority. You can 
 ### Removing the Marker
 
 Right-click the marked cortina row and select **Remove Last Tanda**. The flag icon disappears.
+
+---
+
+## Edit Upcoming Info
+
+During a cortina the display previews the next tanda using the metadata of that tanda's **first dance track**. For a mixed tanda — several orchestras, several singers, a spread of years — those details describe one track, not the tanda. Edit Upcoming Info replaces them with text you type, for that cortina only.
+
+### Setting the Text
+
+Right-click a cortina row and select **Edit Upcoming Info…**. The editor offers three fields:
+
+| Field | Notes |
+|---|---|
+| **Artist** | Free text, e.g. `Mixed Tanda` or `Di Sarli / Troilo` |
+| **Singer** | Shown only when the singer field is enabled for cortinas in Appearance settings |
+| **Year** | Free text, so ranges and labels work: `1941-43`, `Golden Age` |
+
+Each field's placeholder shows what the display would use unedited. Leave a field blank to keep the real metadata for that field — the three are independent. **Save** applies the text; **Clear All** empties all three and removes the override.
+
+A pencil icon appears on the row while an override is set. To remove it later, right-click the row and choose **Clear Upcoming Info**.
+
+### How It Is Shown
+
+- The text is shown **verbatim** — the uppercase/lowercase transforms in Settings are not applied, so what you type is what dancers see.
+- It replaces the corresponding built-in Coming Up fields, and the `{ARTIST}`, `{SINGER}` and `{YEAR}` placeholders in any custom text lines shown during the cortina.
+- Editing the cortina that is **already playing** updates the dancer display immediately.
+- The override is saved with the setlist and survives restarts. It belongs to that one cortina row; other cortinas are unaffected.
+- Built-in player only — external players have no per-entry setlist metadata.
 
 ---
 
@@ -767,7 +796,7 @@ When the built-in player is active, the dancer display responds exactly as it do
 
 - **Cortina detection** — your [Cortina Rules](Cortina-Rules) apply to every setlist track. A track whose genre matches a cortina rule triggers cortina mode on the display automatically.
 - **Tanda counting** — TangoDisplay counts consecutive non-cortina tracks to determine tanda position (e.g. "Track 2 of 4").
-- **Coming-Up preview** — during a cortina, the next tanda's first dance track is shown as the "Coming Up" track on the display.
+- **Coming-Up preview** — during a cortina, the next tanda's first dance track is shown as the "Coming Up" track on the display. Use [Edit Upcoming Info](#edit-upcoming-info) to type your own artist, singer and year for a mixed tanda.
 - **Album artwork** — extracted from the audio file and shown on the dancer display (if artwork display is enabled in Appearance settings).
 
 No additional configuration is needed — the display sync is fully automatic.

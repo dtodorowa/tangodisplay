@@ -31,6 +31,8 @@ Control which fields are shown — independently for dance tracks and for the co
 
 **Show next track during cortina** — hides or shows the entire "Coming Up" next-track preview section. When off, the Next Up column toggles have no effect.
 
+The Coming Up values come from the next tanda's first track. With the built-in player you can type your own artist, singer and year for one cortina — see [Edit Upcoming Info](Built-In-Player#edit-upcoming-info).
+
 ### Text Order
 
 Control the vertical order in which text items appear on the dancer display. There are three independent orderings — one for dance tracks, and two for cortinas.

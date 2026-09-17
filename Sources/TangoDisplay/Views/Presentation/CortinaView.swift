@@ -90,7 +90,8 @@ struct CortinaView: View {
                                    let line = profile.customTextLines.first(where: { $0.id == id }),
                                    line.showInCortina {
                                     let resolved = resolveCustomPlaceholders(line.text, track: next,
-                                                                             profile: profile, settings: settings)
+                                                                             profile: profile, settings: settings,
+                                                                             override: state.nextTrackOverride)
                                     if !resolved.isEmpty {
                                         Text(resolved)
                                             .font(profile.font(name: line.fontName, size: line.fontSize,
@@ -119,7 +120,9 @@ struct CortinaView: View {
                                 }
                             case .artist:
                                 if showComingUp, let next = state.nextTrack, profile.showArtistCortina {
-                                    Text(settings.transform(next.artist, for: .artist))
+                                    // Override text is shown verbatim — the DJ typed exactly what they want.
+                                    Text(state.nextTrackOverride?.artistValue
+                                         ?? settings.transform(next.artist, for: .artist))
                                         .font(profile.artistFont)
                                         .foregroundColor(profile.artistSwiftUIColor)
                                         .lineLimit(2)
@@ -128,8 +131,10 @@ struct CortinaView: View {
                                 }
                             case .year:
                                 if showComingUp, let next = state.nextTrack,
-                                   profile.showYearCortina, let year = next.year {
-                                    let displayYear = settings.transform(String(year), for: .year)
+                                   profile.showYearCortina,
+                                   state.nextTrackOverride?.yearValue != nil || next.year != nil {
+                                    let displayYear = state.nextTrackOverride?.yearValue
+                                        ?? settings.transform(String(next.year ?? 0), for: .year)
                                     if !displayYear.isEmpty {
                                         Text(displayYear)
                                             .font(profile.yearFont)
@@ -149,16 +154,11 @@ struct CortinaView: View {
                                 }
                             case .singer:
                                 if showComingUp, let next = state.nextTrack,
-                                   profile.showSingerCortina,
-                                   let rawSinger = profile.singerValue(from: next), !rawSinger.isEmpty {
-                                    let singerField: TrackInfoField = {
-                                        switch profile.singerSource {
-                                        case .albumArtist: return .albumArtist
-                                        case .comments:    return .comments
-                                        case .grouping:    return .grouping
-                                        }
+                                   profile.showSingerCortina {
+                                    let singer: String = state.nextTrackOverride?.singerValue ?? {
+                                        guard let raw = profile.singerValue(from: next), !raw.isEmpty else { return "" }
+                                        return settings.transform(raw, for: singerTrackInfoField(profile.singerSource))
                                     }()
-                                    let singer = settings.transform(rawSinger, for: singerField)
                                     if !singer.isEmpty {
                                         Text(singer)
                                             .font(profile.singerFont)
