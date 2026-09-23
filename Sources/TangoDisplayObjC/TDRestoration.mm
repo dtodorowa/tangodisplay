@@ -39,6 +39,8 @@ const OSType TDRestorationManufacturer = 'TgDs';
 const OSType TDDeclickSubType          = 'dclk';
 const OSType TDDehumSubType            = 'dhum';
 
+NSString * const TDShellacFiltersVersion = @"1.0.1";
+
 static const int sMaxChannels   = 2;
 static const int sMaxParameters = 8;
 
@@ -303,8 +305,10 @@ struct TDDeclickDSP {
     void update(const TDRestorationState *state)
     {
         // A new record means a fresh pipeline. reset() empties it, so it has to be
-        // re-primed or the next pull underruns.
-        if (forgetPending.exchange(false, std::memory_order_relaxed)) {
+        // re-primed or the next pull underruns. `configured` first, deliberately:
+        // declick::Channel holds no buffers until configure() has run, and testing
+        // it first also leaves the flag unconsumed so the next update() honours it.
+        if (configured && forgetPending.exchange(false, std::memory_order_relaxed)) {
             for (int i = 0; i < channels; i++) channel[i].reset();
             primeAll();
         }

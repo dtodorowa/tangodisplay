@@ -1273,6 +1273,10 @@ struct SetlistView: View {
             }
         }
         Divider()
+        Button(targets.count == 1 ? "Reload Track Info" : "Reload Track Info for Selection") {
+            setlist.reloadMetadata(ids: Array(targets))
+        }
+        Divider()
         let singleEntry = targets.count == 1 ? setlist.entries.first(where: { targets.contains($0.id) }) : nil
         let hasTag = singleEntry.map { $0.tagColor != TagColor.none } ?? targets.contains(where: { id in
             setlist.entries.first(where: { $0.id == id })?.tagColor != TagColor.none

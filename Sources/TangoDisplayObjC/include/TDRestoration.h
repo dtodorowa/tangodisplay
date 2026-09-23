@@ -19,6 +19,11 @@ extern const OSType TDRestorationManufacturer;   // 'TgDs'
 extern const OSType TDDeclickSubType;            // 'dclk'
 extern const OSType TDDehumSubType;              // 'dhum'
 
+/// Upstream release the cores in `shellac/` were copied from, for the credit line in
+/// the restoration popover. Bump it in the same edit as the pin in `shellac/README.md`
+/// — they are the same fact, and this one is the copy a user can actually see.
+extern NSString * const TDShellacFiltersVersion;
+
 /// Parameter addresses, in the order the units publish them. Swift writes values
 /// through -[AUParameterTree parameterWithAddress:], so these are the contract.
 typedef NS_ENUM(AUParameterAddress, TDDeclickParam) {

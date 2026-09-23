@@ -15,6 +15,12 @@ If `$ARGUMENTS` is empty, ask the user: "What should the new version be? (curren
 
 The new `CFBundleVersion` is always the current integer + 1.
 
+Then check the vendored ShellacFilters cores are current: compare the tag pinned in
+`Sources/TangoDisplayObjC/shellac/README.md` against
+https://github.com/shaforostoff/shellacfilters/releases. If upstream is ahead, re-vendor
+`plugins/MacAU/Declick/declick_core.{h,cpp}` and `plugins/MacAU/Dehum/dehum_core.{h,cpp}` verbatim,
+update that README's pin line, and run `swift run TangoDisplayTests` before continuing.
+
 ---
 
 ## Step 2 — Bump version in `Install.sh`

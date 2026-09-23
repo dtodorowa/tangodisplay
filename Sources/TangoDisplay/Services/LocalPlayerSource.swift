@@ -94,6 +94,11 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
     // Restored when the next unassigned track (with no default config) plays.
     private var preConfigSnapshot: PreConfigSnapshot? = nil
 
+    // The configuration the chain currently holds. Reapplying the same one on the next
+    // track would overwrite plugin edits made live during the set — with a default
+    // configuration set, that fired on every single track load.
+    private var appliedConfigurationID: UUID? = nil
+
     private struct PreConfigSnapshot {
         let chainEnabled: Bool
         let chainBypassed: Bool
@@ -1136,10 +1141,16 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
                 )
             }
             if !settings.audioUnitPluginEnabled { enableAudioUnitPlugin() }
-            applyChainConfiguration(config)
+            // Only reapply when the chain isn't already holding this configuration, so
+            // live tweaks survive consecutive tracks that resolve to the same one.
+            if appliedConfigurationID != configID {
+                applyChainConfiguration(config)
+                appliedConfigurationID = configID
+            }
         } else if let snapshot = preConfigSnapshot {
             restorePreConfigSnapshot(snapshot)
             preConfigSnapshot = nil
+            appliedConfigurationID = nil
         }
         reportCurrentState()
         reportPlaylist()

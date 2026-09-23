@@ -162,8 +162,17 @@ Right-click any row:
 | **Edit Upcoming Info…** | Opens an editor for the artist, singer and year shown in the "Coming Up" preview during this cortina — for mixed tandas whose first track would misdescribe what's next. A pencil icon appears on the row once set. Shows **Clear Upcoming Info** alongside when already set. Available only on cortina tracks that have not finished playing. See [Edit Upcoming Info](#edit-upcoming-info) below. |
 | **Mark as Performance** | Marks this track as a guest performance track. When it plays, the dancer display switches to the custom Performance view instead of normal track info. Shows as **Remove Performance** when already set. See [Performance Tracks](#performance-tracks) below. |
 | **Tag Colour** | Opens a sub-menu to assign a colour dot (red, orange, yellow, green, blue, purple) to the row for visual organisation, or **Clear Tag Colour** to remove it. See [Track Tags](#track-tags) below. |
+| **Reload Track Info** | Re-reads the artist, title, genre, year and other tags from the file. Use it when a row shows a filename instead of proper track details — see [Tracks Showing Filenames](#tracks-showing-filenames) below. Select several rows first and the action becomes **Reload Track Info for Selection**. |
 
 > **Screenshot placeholder:** right-click context menu on a setlist row
+
+### Tracks Showing Filenames
+
+TangoDisplay reads a track's tags from the file at the moment you drop it into the setlist. If the file is on an external drive that is asleep, or on a slow or network volume, that read can come back empty — the row then keeps the filename as its title and shows no artist or genre, both in the setlist and on the dancer display.
+
+Right-click the affected rows and choose **Reload Track Info** to read the tags again. Rows that never got a successful read are also retried automatically each time TangoDisplay launches.
+
+> **Worth knowing:** a track with no genre is treated as a cortina under the deny-list rule, because an empty genre is not in your list of dance genres. A failed tag read can therefore throw off tanda counting and the "Coming Up" preview until you reload the track info. Waking an external drive before you build the setlist avoids the problem entirely.
 
 **Bulk mark:** ⌘-click or Shift-click to select multiple rows, then right-click to apply **Mark as Played** or **Mark as Not Played** to all selected tracks at once. When two or more tracks are selected, the status bar at the bottom of the setlist shows the number of selected tracks and their combined duration.
 
@@ -735,7 +744,11 @@ By default the built-in player uses the macOS system default output device. To r
 2. Under **Built-in Player**, open the **Main output** picker
 3. Select your device
 
-The list shows all currently available audio output devices. If the selected device is disconnected, playback falls back to the system default automatically.
+The list shows all currently available audio output devices.
+
+> **Pick your interface by name, not "System Default".** On System Default the player follows whatever macOS currently calls the default device — so plugging headphones into the built-in jack moves the player's output to the headphones, and unplugging them moves it to the internal speakers. Selecting the interface by name pins the output to that device regardless of what the system default does.
+
+If the selected device is disconnected, playback stops and an **Audio Device Unavailable** alert appears with a **Retry** button. Reconnect the device and click Retry to resume — the player does not silently fall back to another output.
 
 ### Exclusive Mode (Hog Mode)
 
