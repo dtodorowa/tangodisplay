@@ -4,6 +4,25 @@
         <title>TangoDisplay</title>
         <link>https://github.com/richardsladetdj-creator/TangoDisplay</link>
         <item>
+            <title>Version 3.33.0</title>
+            <pubDate>Wed, 23 Sep 2026 10:56:28 +0000</pubDate>
+            <sparkle:version>112</sparkle:version>
+            <sparkle:shortVersionString>3.33.0</sparkle:shortVersionString>
+            <description><![CDATA[
+                <ul>
+                    <li><b>Reload Track Info:</b> right-click a setlist row &#8212; or a selection &#8212; and choose <b>Reload Track Info</b> to re-read the tags from the file. Fixes rows that show a filename with no artist or genre because the file sat on a sleeping, slow or network drive when it was dropped in. Rows that never got a successful read are retried automatically at every launch. Worth fixing: a track with no genre counts as a cortina under the deny-list rule, so a failed tag read also throws off tanda counting and the &#8220;Coming Up&#8221; preview.</li>
+                    <li><b>Plugin tweaks survive the set:</b> with a default plugin configuration set, the chain was re-applied on every track load, wiping any adjustment made live. It now re-applies only when the configuration actually changes.</li>
+                    <li><b>ShellacFilters v1.0.1:</b> re-vendored declick and dehum cores. The dehum detector now runs on a decimated signal &#8212; far less work per detection pass, same result &#8212; and declick no longer allocates ~2.1 MB per channel on the audio thread. The upstream version is shown in the Restoration popover.</li>
+                    <li><b>Output device:</b> pick your interface by name rather than <b>System Default</b> &#8212; on System Default the player follows whatever macOS calls the default, so plugging in headphones moves its output. If the chosen device disconnects, playback stops with an <b>Audio Device Unavailable</b> alert offering Retry; it never silently falls back to another output.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/richardsladetdj-creator/TangoDisplay/releases/download/v3.33.0/TangoDisplay-v3.33.0-universal.zip"
+                sparkle:edSignature="iWPk0NqZNv6xlp04/Wp6R9amDrV073vgV9Mexm/rPvgOEKuNyMOPW8jJ2+NN9zoROEeKaYtc1839tV3TigwRAw=="
+                length="6967078"
+                type="application/zip"/>
+        </item>
+        <item>
             <title>Version 3.32.0</title>
             <pubDate>Thu, 17 Sep 2026 17:42:08 +0000</pubDate>
             <sparkle:version>111</sparkle:version>
