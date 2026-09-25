@@ -143,6 +143,19 @@ Click any colour swatch to open the macOS colour picker.
 
 ## Artwork & Motion
 
+### Layout
+
+| Option | Description |
+|---|---|
+| **Centred** | Default. All text is centred on the screen. |
+| **Text Left, Image Right** | Text is left-aligned in the left half of the screen. The right half shows an image of the current orchestra. |
+
+In the *Text Left, Image Right* layout the right pane shows the matching **Artist Background** image (see below) for the playing track. When no artist matches, it shows the album artwork instead, if artwork is enabled for that context in the **Visibility** tab. If neither is available the pane stays empty and the text still sits on the left. During a cortina the pane shows the **Cortina Image** if one is set, otherwise the next tanda's artist image, so dancers see who is coming up.
+
+**Cortina Image** appears under Layout once *Text Left, Image Right* is chosen. Pick any picture to fill the right pane during every cortina, with its own **Opacity** slider. Clear it to go back to the next tanda's artist. This is separate from the cortina entry under **Genre Backgrounds**, which fills the whole screen behind the text.
+
+Because the artist image and album artwork move into the pane, they are no longer drawn as a full-screen background or overlay in this layout. Their **Opacity** sliders still apply; **Scale**, **Edge Fade** and position sliders do not. Genre and profile background images still fill the whole screen behind both halves.
+
 ### Transition
 
 | Setting | Description |

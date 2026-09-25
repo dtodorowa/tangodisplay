@@ -106,6 +106,9 @@ public final class ProfileStore: ObservableObject {
         if let filename = profile.backgroundImageFilename {
             try? FileManager.default.removeItem(at: imageURL(for: filename))
         }
+        if let filename = profile.cortinaImageFilename {
+            try? FileManager.default.removeItem(at: imageURL(for: filename))
+        }
         for entry in profile.artistBackgrounds {
             if let filename = entry.imageFilename {
                 try? FileManager.default.removeItem(at: imageURL(for: filename))

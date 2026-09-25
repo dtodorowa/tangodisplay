@@ -338,6 +338,40 @@ func runProfileStoreTests() {
             try expectEqual(store2.userProfiles[0].backgroundColor, "#FF0000")
         }
 
+        test("displayLayout round-trips and defaults to centred when absent") {
+            var profile = AppearanceProfile(id: UUID(), name: "Split", isBuiltIn: false)
+            profile.displayLayout = .textLeftImageRight
+            let data = try JSONEncoder().encode(profile)
+            let decoded = try JSONDecoder().decode(AppearanceProfile.self, from: data)
+            try expect(decoded.displayLayout == .textLeftImageRight, "layout did not round-trip")
+
+            // Older profile JSON has no displayLayout key
+            var dict = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+            dict.removeValue(forKey: "displayLayout")
+            let legacy = try JSONSerialization.data(withJSONObject: dict)
+            let legacyProfile = try JSONDecoder().decode(AppearanceProfile.self, from: legacy)
+            try expect(legacyProfile.displayLayout == .centered, "legacy profile should default to centred")
+        }
+
+        test("cortina image round-trips and defaults to none when absent") {
+            var profile = AppearanceProfile(id: UUID(), name: "Split", isBuiltIn: false)
+            profile.cortinaImageFilename = "cortina-test.jpg"
+            profile.cortinaImageOpacity = 0.6
+            let data = try JSONEncoder().encode(profile)
+            let decoded = try JSONDecoder().decode(AppearanceProfile.self, from: data)
+            try expect(decoded.cortinaImageFilename == "cortina-test.jpg", "cortina image filename did not round-trip")
+            try expect(decoded.cortinaImageOpacity == 0.6, "cortina image opacity did not round-trip")
+
+            // Profiles saved before the cortina image existed have neither key
+            var dict = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+            dict.removeValue(forKey: "cortinaImageFilename")
+            dict.removeValue(forKey: "cortinaImageOpacity")
+            let legacy = try JSONSerialization.data(withJSONObject: dict)
+            let legacyProfile = try JSONDecoder().decode(AppearanceProfile.self, from: legacy)
+            try expect(legacyProfile.cortinaImageFilename == nil, "legacy profile should have no cortina image")
+            try expect(legacyProfile.cortinaImageOpacity == 1.0, "legacy profile opacity should default to 1.0")
+        }
+
         test("update existing profile") {
             let tmpDir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("TangoDisplayTests-\(UUID().uuidString)", isDirectory: true)

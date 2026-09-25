@@ -10,11 +10,14 @@ struct IdleView: View {
         ZStack {
             // Idle message
             if !settings.idleMessage.isEmpty {
+                let split = profile.displayLayout == .textLeftImageRight
                 Text(settings.idleMessage)
                     .font(profile.idleMessageFont)
                     .foregroundColor(profile.idleMessageSwiftUIColor)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(split ? .leading : .center)
                     .padding()
+                    .frame(maxWidth: .infinity, alignment: split ? .leading : .center)
+                    .padding(.horizontal, split ? 44 : 0)
             }
 
             // Paused banner

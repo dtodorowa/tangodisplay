@@ -1,14 +1,49 @@
+import AppKit
 import SwiftUI
 import TangoDisplayCore
+
+/// Image shown in the right-hand pane of the "Text Left, Image Right" layout.
+struct SidePanelImage {
+    let image: NSImage
+    let opacity: Double
+}
 
 struct PlayingView: View {
     let state: DisplayState
     let profile: AppearanceProfile
     let isLastTandaActive: Bool
     @ObservedObject var settings: AppSettings
+    var sideImage: SidePanelImage? = nil
+
+    private var isSplit: Bool { profile.displayLayout == .textLeftImageRight }
+    private var textAlignment: TextAlignment { isSplit ? .leading : .center }
+    private var stackAlignment: HorizontalAlignment { isSplit ? .leading : .center }
 
     var body: some View {
-        VStack(spacing: 16) {
+        if isSplit {
+            HStack(spacing: 40) {
+                textStack
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let side = sideImage {
+                    Image(nsImage: side.image)
+                        .resizable()
+                        .scaledToFit()
+                        .opacity(side.opacity)
+                        .padding(.vertical, 60)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .padding(.horizontal, 60)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            textStack
+                .padding(.horizontal, 60)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var textStack: some View {
+        VStack(alignment: stackAlignment, spacing: 16) {
             Spacer()
 
             ForEach(profile.danceItemOrder, id: \.self) { entry in
@@ -22,7 +57,7 @@ struct PlayingView: View {
                                 .font(profile.font(name: line.fontName, size: line.fontSize,
                                                    bold: line.fontBold, italic: line.fontItalic))
                                 .foregroundColor(Color(hex: line.colorHex))
-                                .multilineTextAlignment(.center)
+                                .multilineTextAlignment(textAlignment)
                                 .lineLimit(Self.dynamicLineLimit(resolved))
                                 .minimumScaleFactor(0.5)
                         }
@@ -34,7 +69,7 @@ struct PlayingView: View {
                         Text(settings.displayLabel(for: genre).uppercased())
                             .font(profile.genreFont)
                             .foregroundColor(profile.genreSwiftUIColor)
-                            .multilineTextAlignment(.center)
+                            .multilineTextAlignment(textAlignment)
                     }
                 case .artist:
                     if profile.showArtistDance, let artist = state.currentTrack?.artist, !artist.isEmpty {
@@ -42,7 +77,7 @@ struct PlayingView: View {
                         Text(displayArtist)
                             .font(profile.artistFont)
                             .foregroundColor(profile.artistSwiftUIColor)
-                            .multilineTextAlignment(.center)
+                            .multilineTextAlignment(textAlignment)
                             .lineLimit(Self.dynamicLineLimit(displayArtist))
                             .minimumScaleFactor(0.5)
                     }
@@ -53,7 +88,7 @@ struct PlayingView: View {
                             Text(displayYear)
                                 .font(profile.yearFont)
                                 .foregroundColor(profile.yearSwiftUIColor)
-                                .multilineTextAlignment(.center)
+                                .multilineTextAlignment(textAlignment)
                         }
                     }
                 case .title:
@@ -62,7 +97,7 @@ struct PlayingView: View {
                         Text(displayTitle)
                             .font(profile.titleFont)
                             .foregroundColor(profile.titleSwiftUIColor)
-                            .multilineTextAlignment(.center)
+                            .multilineTextAlignment(textAlignment)
                             .lineLimit(Self.dynamicLineLimit(displayTitle))
                             .minimumScaleFactor(0.5)
                     }
@@ -82,7 +117,7 @@ struct PlayingView: View {
                             Text(singer)
                                 .font(profile.singerFont)
                                 .foregroundColor(profile.singerSwiftUIColor)
-                                .multilineTextAlignment(.center)
+                                .multilineTextAlignment(textAlignment)
                                 .lineLimit(Self.dynamicLineLimit(singer))
                                 .minimumScaleFactor(0.5)
                         }
@@ -92,7 +127,7 @@ struct PlayingView: View {
                         Text(settings.lastTandaLabel.uppercased())
                             .font(profile.lastTandaLabelFont)
                             .foregroundColor(profile.lastTandaLabelSwiftUIColor)
-                            .multilineTextAlignment(.center)
+                            .multilineTextAlignment(textAlignment)
                     }
                 case .trackCounter:
                     if settings.showTrackCounter,
@@ -102,7 +137,7 @@ struct PlayingView: View {
                             .font(profile.trackCounterFont)
                             .foregroundColor(profile.trackCounterSwiftUIColor)
                             .shadow(color: .black.opacity(0.6), radius: 4, x: 0, y: 1)
-                            .multilineTextAlignment(.center)
+                            .multilineTextAlignment(textAlignment)
                     }
                 case .tdjName:
                     if settings.showTdjName,
@@ -113,7 +148,7 @@ struct PlayingView: View {
                             .font(profile.tdjNameFont)
                             .foregroundColor(profile.tdjNameSwiftUIColor)
                             .shadow(color: .black.opacity(0.6), radius: 4, x: 0, y: 1)
-                            .multilineTextAlignment(.center)
+                            .multilineTextAlignment(textAlignment)
                     }
                     case .cortinaLabel, .cortinaArtist, .cortinaTitle, .nextUpLabel:
                         EmptyView()
@@ -123,8 +158,6 @@ struct PlayingView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 60)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     static func dynamicLineLimit(_ s: String) -> Int {

@@ -29,6 +29,7 @@ struct AppearanceSettingsView: View {
     @State private var newProfileName = ""
     @State private var didSave = false
     @State private var bgThumbnail: NSImage? = nil
+    @State private var cortinaImageThumbnail: NSImage? = nil
     @State private var artistBgThumbnails: [UUID: NSImage] = [:]
     @State private var genreBgThumbnails: [UUID: NSImage] = [:]
     @State private var danceDragItem: OrderEntry? = nil
@@ -137,6 +138,9 @@ struct AppearanceSettingsView: View {
                                  bgThumbnail: bgThumbnail,
                                  onPickImage: pickImage,
                                  onClearImage: clearImage,
+                                 cortinaImageThumbnail: cortinaImageThumbnail,
+                                 onPickCortinaImage: pickCortinaImage,
+                                 onClearCortinaImage: clearCortinaImage,
                                  artistBgThumbnails: artistBgThumbnails,
                                  onPickArtistImage: pickArtistImage(for:),
                                  onClearArtistImage: clearArtistImage(for:),
@@ -229,6 +233,7 @@ struct AppearanceSettingsView: View {
         appState.hasUnsavedAppearanceChanges = false
         appState.draftProfile = working
         reloadThumbnail()
+        reloadCortinaImageThumbnail()
         reloadArtistBgThumbnails()
         syncGenreBackgroundsToDenylist()
         reloadGenreBgThumbnails()
@@ -274,6 +279,46 @@ struct AppearanceSettingsView: View {
         working.backgroundImageOffsetX = 0.0
         working.backgroundImageOffsetY = 0.0
         bgThumbnail = nil
+    }
+
+    // MARK: - Cortina image
+
+    private func reloadCortinaImageThumbnail() {
+        guard let filename = working.cortinaImageFilename else { cortinaImageThumbnail = nil; return }
+        cortinaImageThumbnail = NSImage(contentsOf: appState.profileStore.imageURL(for: filename))
+    }
+
+    private func pickCortinaImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose an image to show during cortinas"
+        guard panel.runModal() == .OK, let src = panel.url else { return }
+
+        let ext = src.pathExtension.isEmpty ? "jpg" : src.pathExtension
+        let filename = "cortina-\(working.id.uuidString).\(ext)"
+        let dest = appState.profileStore.imageURL(for: filename)
+        appState.profileStore.createImagesDirectoryIfNeeded()
+
+        if let old = working.cortinaImageFilename, old != filename {
+            try? FileManager.default.removeItem(at: appState.profileStore.imageURL(for: old))
+        }
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try? FileManager.default.removeItem(at: dest)
+        }
+        try? FileManager.default.copyItem(at: src, to: dest)
+
+        working.cortinaImageFilename = filename
+        cortinaImageThumbnail = NSImage(contentsOf: dest)
+    }
+
+    private func clearCortinaImage() {
+        if let filename = working.cortinaImageFilename {
+            try? FileManager.default.removeItem(at: appState.profileStore.imageURL(for: filename))
+        }
+        working.cortinaImageFilename = nil
+        working.cortinaImageOpacity = 1.0
+        cortinaImageThumbnail = nil
     }
 
     // MARK: - Artist backgrounds

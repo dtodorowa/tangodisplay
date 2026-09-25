@@ -60,6 +60,13 @@ public struct AppearanceProfile: Codable, Identifiable, Equatable {
     public var transitionStyle: TransitionStyle
     public var transitionDuration: Double
 
+    // Overall composition of the dancer screen: centred text, or text on the left with an image pane on the right
+    public var displayLayout: DisplayLayout
+
+    // Split layout's right-hand pane during cortinas; nil falls back to the next tanda's artist
+    public var cortinaImageFilename: String?  // "cortina-{profileUUID}.{ext}" stored in images dir
+    public var cortinaImageOpacity: Double    // 0.0–1.0
+
     // Background image (optional — nil means no image)
     public var backgroundImageFilename: String?  // "{profileUUID}.{ext}" stored in images dir
     public var backgroundImageOpacity: Double    // 0.0–1.0
@@ -215,6 +222,9 @@ public struct AppearanceProfile: Codable, Identifiable, Equatable {
                 tdjNameColor: String = "#AAAAAA",
                 transitionStyle: TransitionStyle = .fade,
                 transitionDuration: Double = 0.4,
+                displayLayout: DisplayLayout = .centered,
+                cortinaImageFilename: String? = nil,
+                cortinaImageOpacity: Double = 1.0,
                 backgroundImageFilename: String? = nil,
                 backgroundImageOpacity: Double = 1.0,
                 backgroundImageScale: Double = 1.0,
@@ -321,6 +331,9 @@ public struct AppearanceProfile: Codable, Identifiable, Equatable {
         self.tdjNameColor      = tdjNameColor
         self.transitionStyle = transitionStyle
         self.transitionDuration = transitionDuration
+        self.displayLayout = displayLayout
+        self.cortinaImageFilename = cortinaImageFilename
+        self.cortinaImageOpacity = cortinaImageOpacity
         self.backgroundImageFilename = backgroundImageFilename
         self.backgroundImageOpacity = backgroundImageOpacity
         self.backgroundImageScale = backgroundImageScale
@@ -450,6 +463,9 @@ public struct AppearanceProfile: Codable, Identifiable, Equatable {
         tdjNameColor         = try c.decodeIfPresent(String.self, forKey: .tdjNameColor)      ?? "#AAAAAA"
         transitionStyle      = try c.decode(TransitionStyle.self, forKey: .transitionStyle)
         transitionDuration   = try c.decode(Double.self,          forKey: .transitionDuration)
+        displayLayout        = try c.decodeIfPresent(DisplayLayout.self, forKey: .displayLayout) ?? .centered
+        cortinaImageFilename = try c.decodeIfPresent(String.self, forKey: .cortinaImageFilename)
+        cortinaImageOpacity  = try c.decodeIfPresent(Double.self, forKey: .cortinaImageOpacity) ?? 1.0
         // New fields — absent in older JSON files, fall back to defaults
         backgroundImageFilename = try c.decodeIfPresent(String.self,  forKey: .backgroundImageFilename)
         backgroundImageOpacity  = try c.decodeIfPresent(Double.self,  forKey: .backgroundImageOpacity)  ?? 1.0
@@ -759,6 +775,18 @@ public enum SingerSource: String, Codable, CaseIterable {
         case .comments:    "Comments"
         case .albumArtist: "Album Artist"
         case .grouping:    "Grouping"
+        }
+    }
+}
+
+public enum DisplayLayout: String, Codable, CaseIterable {
+    case centered
+    case textLeftImageRight
+
+    public var displayName: String {
+        switch self {
+        case .centered:           "Centred"
+        case .textLeftImageRight: "Text Left, Image Right"
         }
     }
 }

@@ -11,6 +11,8 @@ struct PresentationView: View {
     @State private var artistBgImage: NSImage? = nil
     @State private var genreBgImage: NSImage? = nil
     @State private var performanceBgImage: NSImage? = nil
+    @State private var nextArtistImage: NSImage? = nil
+    @State private var cortinaImage: NSImage? = nil
 
     private var activeProfile: AppearanceProfile { appState.activeProfile }
 
@@ -22,6 +24,34 @@ struct PresentationView: View {
         }
     }
 
+    private var isSplitLayout: Bool {
+        activeProfile.displayLayout == .textLeftImageRight
+    }
+
+    // In the split layout the artist image and album artwork move out of the
+    // background/overlay layers and into the right-hand pane.
+    // Playing: current artist → album artwork. Cortina: cortina image → next tanda's artist → album artwork.
+    private var sideImage: SidePanelImage? {
+        guard isSplitLayout else { return nil }
+        let artistImage: NSImage?
+        switch appState.displayState.mode {
+        case .playing: artistImage = artistBgImage
+        case .cortina:
+            if let img = cortinaImage {
+                return SidePanelImage(image: img, opacity: activeProfile.cortinaImageOpacity)
+            }
+            artistImage = nextArtistImage
+        default:       return nil
+        }
+        if let img = artistImage {
+            return SidePanelImage(image: img, opacity: activeProfile.artistBackgroundOpacity)
+        }
+        if shouldShowArtwork, let art = appState.currentArtwork {
+            return SidePanelImage(image: art, opacity: activeProfile.albumArtworkOpacity)
+        }
+        return nil
+    }
+
     var body: some View {
         // Content layer: transitions between playing/idle/cortina views.
         // Background is applied behind it; track counter is overlaid on top.
@@ -29,7 +59,7 @@ struct PresentationView: View {
             // Album artwork layer — above background, below text.
             // Uses displayedArtworkTrackID as transition identity so it
             // transitions in/out with each track change (same timing as text).
-            if shouldShowArtwork {
+            if shouldShowArtwork && !isSplitLayout {
                 TransitionContainer(
                     identity: appState.displayedArtworkTrackID,
                     style: activeProfile.transitionStyle,
@@ -83,7 +113,7 @@ struct PresentationView: View {
                             .clipped()
                             .ignoresSafeArea()
                     }
-                } else if let img = artistBgImage {
+                } else if let img = artistBgImage, !isSplitLayout {
                     Image(nsImage: img)
                         .resizable()
                         .scaledToFill()
@@ -137,21 +167,29 @@ struct PresentationView: View {
         }
         .onAppear {
             reloadBgImage()
+            reloadCortinaImage()
             reloadArtistBgImage()
+            reloadNextArtistImage()
             reloadGenreBgImage()
             reloadPerformanceBgImage()
         }
         .onChange(of: activeProfile) { _ in
             reloadBgImage()
+            reloadCortinaImage()
             reloadArtistBgImage()
+            reloadNextArtistImage()
             reloadGenreBgImage()
         }
         .onChange(of: appState.displayState.mode) { _ in
             reloadArtistBgImage()
+            reloadNextArtistImage()
             reloadGenreBgImage()
         }
         .onChange(of: appState.displayState.currentTrack?.artist ?? "") { _ in
             reloadArtistBgImage()
+        }
+        .onChange(of: appState.displayState.nextTrack?.artist ?? "") { _ in
+            reloadNextArtistImage()
         }
         .onChange(of: appState.displayState.currentTrack?.genre ?? "") { _ in
             reloadGenreBgImage()
@@ -179,6 +217,14 @@ struct PresentationView: View {
         bgImage = NSImage(contentsOf: url)
     }
 
+    private func reloadCortinaImage() {
+        guard let filename = activeProfile.cortinaImageFilename else {
+            cortinaImage = nil
+            return
+        }
+        cortinaImage = NSImage(contentsOf: appState.profileStore.imageURL(for: filename))
+    }
+
     private func reloadArtistBgImage() {
         guard appState.displayState.mode == .playing else {
             artistBgImage = nil
@@ -191,6 +237,21 @@ struct PresentationView: View {
             return
         }
         artistBgImage = NSImage(contentsOf: appState.profileStore.imageURL(for: filename))
+    }
+
+    // Only used by the split layout's cortina pane, so skip the disk read otherwise.
+    private func reloadNextArtistImage() {
+        guard isSplitLayout, appState.displayState.mode == .cortina else {
+            nextArtistImage = nil
+            return
+        }
+        let artist = appState.displayState.nextTrack?.artist ?? ""
+        guard let match = activeProfile.matchingArtistBackground(for: artist),
+              let filename = match.imageFilename else {
+            nextArtistImage = nil
+            return
+        }
+        nextArtistImage = NSImage(contentsOf: appState.profileStore.imageURL(for: filename))
     }
 
     private func reloadGenreBgImage() {
@@ -255,14 +316,16 @@ struct PresentationView: View {
                 state: appState.displayState,
                 profile: activeProfile,
                 isLastTandaActive: appState.isLastTandaActive,
-                settings: appState.settings
+                settings: appState.settings,
+                sideImage: sideImage
             )
         case .cortina:
             CortinaView(
                 state: appState.displayState,
                 profile: activeProfile,
                 isLastTandaActive: appState.isLastTandaActive,
-                settings: appState.settings
+                settings: appState.settings,
+                sideImage: sideImage
             )
         case .idle, .paused:
             IdleView(
@@ -304,8 +367,9 @@ struct PresentationView: View {
         Text(appState.displayState.overrideText ?? "")
             .font(activeProfile.overrideTextFont)
             .foregroundColor(activeProfile.overrideTextSwiftUIColor)
-            .multilineTextAlignment(.center)
+            .multilineTextAlignment(isSplitLayout ? .leading : .center)
             .padding(60)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity,
+                   alignment: isSplitLayout ? .leading : .center)
     }
 }

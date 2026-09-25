@@ -7,6 +7,9 @@ struct AppearanceArtworkTab: View {
     let bgThumbnail: NSImage?
     let onPickImage: () -> Void
     let onClearImage: () -> Void
+    let cortinaImageThumbnail: NSImage?
+    let onPickCortinaImage: () -> Void
+    let onClearCortinaImage: () -> Void
     let artistBgThumbnails: [UUID: NSImage]
     let onPickArtistImage: (ArtistBackground) -> Void
     let onClearArtistImage: (ArtistBackground) -> Void
@@ -32,6 +35,67 @@ struct AppearanceArtworkTab: View {
 
     var body: some View {
         Form {
+            Section {
+                Picker("Layout", selection: $working.displayLayout) {
+                    ForEach(DisplayLayout.allCases, id: \.self) { layout in
+                        Text(layout.displayName).tag(layout)
+                    }
+                }
+                if working.displayLayout == .textLeftImageRight {
+                    HStack(spacing: 12) {
+                        Group {
+                            if let thumb = cortinaImageThumbnail {
+                                Image(nsImage: thumb)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 40, height: 40)
+                                    .clipped()
+                                    .cornerRadius(4)
+                            } else {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.secondary.opacity(0.2))
+                                    .frame(width: 40, height: 40)
+                                    .overlay(
+                                        Image(systemName: "pause.rectangle")
+                                            .foregroundColor(.secondary)
+                                    )
+                            }
+                        }
+                        Text("Cortina Image")
+                        Spacer()
+                        Button(working.cortinaImageFilename == nil ? "Pick Image…" : "Change Image…") {
+                            onPickCortinaImage()
+                        }
+                        .buttonStyle(.bordered)
+                        if working.cortinaImageFilename != nil {
+                            Button("Clear") { onClearCortinaImage() }
+                                .buttonStyle(.bordered)
+                                .foregroundColor(.red)
+                        }
+                    }
+                    if working.cortinaImageFilename != nil {
+                        HStack {
+                            Text("Opacity")
+                            Slider(value: $working.cortinaImageOpacity, in: 0...1)
+                            Text(String(format: "%.0f%%", working.cortinaImageOpacity * 100))
+                                .monospacedDigit()
+                                .frame(width: 44)
+                        }
+                    }
+                }
+            } header: {
+                Text("Layout")
+                    .foregroundColor(ControlTheme.accent)
+            } footer: {
+                if working.displayLayout == .textLeftImageRight {
+                    Label {
+                        Text("Text is left-aligned. The right half shows the matching Artist Background image, or the album artwork when no artist matches. During cortinas it shows the Cortina Image when one is set, otherwise the next tanda's artist. Artist image scale and position sliders do not apply in this layout.")
+                    } icon: {
+                        Image(systemName: "info.circle")
+                    }
+                }
+            }
+
             Section {
                 Picker("Style", selection: $working.transitionStyle) {
                     ForEach(TransitionStyle.allCases, id: \.self) { style in

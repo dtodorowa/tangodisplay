@@ -6,13 +6,41 @@ struct CortinaView: View {
     let profile: AppearanceProfile
     let isLastTandaActive: Bool
     @ObservedObject var settings: AppSettings
+    var sideImage: SidePanelImage? = nil
+
+    private var isSplit: Bool { profile.displayLayout == .textLeftImageRight }
+    private var textAlignment: TextAlignment { isSplit ? .leading : .center }
+    private var stackAlignment: HorizontalAlignment { isSplit ? .leading : .center }
 
     var body: some View {
-        VStack(spacing: 32) {
+        if isSplit {
+            HStack(spacing: 40) {
+                textStack
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let side = sideImage {
+                    Image(nsImage: side.image)
+                        .resizable()
+                        .scaledToFit()
+                        .opacity(side.opacity)
+                        .padding(.vertical, 60)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .padding(.horizontal, 60)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            textStack
+                .padding(.horizontal, 60)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var textStack: some View {
+        VStack(alignment: stackAlignment, spacing: 32) {
             Spacer()
 
             // Cortina-track section: CORTINA label always shown; artist/title gated by toggle
-            VStack(spacing: 12) {
+            VStack(alignment: stackAlignment, spacing: 12) {
                 ForEach(profile.cortinaTrackItemOrder, id: \.self) { entry in
                     if case .builtin(let item) = entry {
                     switch item {
@@ -21,7 +49,7 @@ struct CortinaView: View {
                             .font(profile.cortinaLabelFont)
                             .tracking(12)
                             .foregroundColor(profile.cortinaLabelSwiftUIColor)
-                            .multilineTextAlignment(.center)
+                            .multilineTextAlignment(textAlignment)
                     case .cortinaArtist:
                         if profile.showCortinaTrackDuringCortina,
                            profile.showCortinaTrackArtist,
@@ -29,7 +57,7 @@ struct CortinaView: View {
                             Text(settings.transform(artist, for: .artist))
                                 .font(profile.cortinaArtistFont)
                                 .foregroundColor(profile.cortinaArtistSwiftUIColor)
-                                .multilineTextAlignment(.center)
+                                .multilineTextAlignment(textAlignment)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.5)
                         }
@@ -40,7 +68,7 @@ struct CortinaView: View {
                             Text(settings.transform(title, for: .title))
                                 .font(profile.cortinaTitleFont)
                                 .foregroundColor(profile.cortinaTitleSwiftUIColor)
-                                .multilineTextAlignment(.center)
+                                .multilineTextAlignment(textAlignment)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.5)
                         }
@@ -63,7 +91,7 @@ struct CortinaView: View {
                     .padding(.vertical, 8)
 
                 // Coming-up section
-                VStack(spacing: 12) {
+                VStack(alignment: stackAlignment, spacing: 12) {
                     if showPerformanceComing {
                         // Performance cortina: show nextUpLabel + DJ-configured lines
                         if !settings.nextUpLabel.isEmpty {
@@ -78,7 +106,7 @@ struct CortinaView: View {
                                 Text(resolved)
                                     .font(performanceLineFont(line))
                                     .foregroundColor(Color(hex: line.colorHex))
-                                    .multilineTextAlignment(.center)
+                                    .multilineTextAlignment(textAlignment)
                                     .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
                             }
                         }
@@ -97,7 +125,7 @@ struct CortinaView: View {
                                             .font(profile.font(name: line.fontName, size: line.fontSize,
                                                                bold: line.fontBold, italic: line.fontItalic))
                                             .foregroundColor(Color(hex: line.colorHex))
-                                            .multilineTextAlignment(.center)
+                                            .multilineTextAlignment(textAlignment)
                                             .lineLimit(2)
                                             .minimumScaleFactor(0.5)
                                     }
@@ -127,7 +155,7 @@ struct CortinaView: View {
                                         .foregroundColor(profile.artistSwiftUIColor)
                                         .lineLimit(2)
                                         .minimumScaleFactor(0.5)
-                                        .multilineTextAlignment(.center)
+                                        .multilineTextAlignment(textAlignment)
                                 }
                             case .year:
                                 if showComingUp, let next = state.nextTrack,
@@ -139,7 +167,7 @@ struct CortinaView: View {
                                         Text(displayYear)
                                             .font(profile.yearFont)
                                             .foregroundColor(profile.yearSwiftUIColor)
-                                            .multilineTextAlignment(.center)
+                                            .multilineTextAlignment(textAlignment)
                                     }
                                 }
                             case .title:
@@ -148,7 +176,7 @@ struct CortinaView: View {
                                     Text(settings.transform(next.title, for: .title))
                                         .font(profile.titleFont)
                                         .foregroundColor(profile.titleSwiftUIColor)
-                                        .multilineTextAlignment(.center)
+                                        .multilineTextAlignment(textAlignment)
                                         .lineLimit(2)
                                         .minimumScaleFactor(0.5)
                                 }
@@ -163,7 +191,7 @@ struct CortinaView: View {
                                         Text(singer)
                                             .font(profile.singerFont)
                                             .foregroundColor(profile.singerSwiftUIColor)
-                                            .multilineTextAlignment(.center)
+                                            .multilineTextAlignment(textAlignment)
                                             .lineLimit(2)
                                             .minimumScaleFactor(0.5)
                                     }
@@ -173,7 +201,7 @@ struct CortinaView: View {
                                     Text(settings.lastTandaLabel.uppercased())
                                         .font(profile.lastTandaLabelFont)
                                         .foregroundColor(profile.lastTandaLabelSwiftUIColor)
-                                        .multilineTextAlignment(.center)
+                                        .multilineTextAlignment(textAlignment)
                                 }
                             case .tdjName:
                                 if settings.showTdjName,
@@ -184,7 +212,7 @@ struct CortinaView: View {
                                         .font(profile.tdjNameFont)
                                         .foregroundColor(profile.tdjNameSwiftUIColor)
                                         .shadow(color: .black.opacity(0.6), radius: 4, x: 0, y: 1)
-                                        .multilineTextAlignment(.center)
+                                        .multilineTextAlignment(textAlignment)
                                 }
                                 default:
                                     EmptyView()
@@ -193,12 +221,10 @@ struct CortinaView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 60)
             }
 
             Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func performanceLineFont(_ line: PerformanceTextLine) -> Font {
