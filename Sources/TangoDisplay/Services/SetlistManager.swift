@@ -31,10 +31,11 @@ struct SetlistEntry: Identifiable, Codable {
     var trimStartSeconds: Double? = nil   // nil = play from file start
     var trimEndSeconds: Double? = nil      // nil = play to file end
     var restorationOverride: Bool? = nil   // nil = follow global rule; true = force skip; false = force apply
+    var upcomingOverride: UpcomingOverride? = nil  // cortina only: DJ-edited "Coming Up" details for the next tanda
     var autoGapApplied: Bool = false   // transient: true while auto-gap preroll is scheduled before this track
 
     enum CodingKeys: String, CodingKey {
-        case id, fileURL, track, state, duration, autoGapOverride, ignoresAutoFade, isLastTanda, isPerformance, repeatTrack, pluginConfigurationID, tagColor, trimStartSeconds, trimEndSeconds, restorationOverride
+        case id, fileURL, track, state, duration, autoGapOverride, ignoresAutoFade, isLastTanda, isPerformance, repeatTrack, pluginConfigurationID, tagColor, trimStartSeconds, trimEndSeconds, restorationOverride, upcomingOverride
         // autoGapApplied is intentionally excluded — reset each playback session
     }
 
@@ -82,6 +83,7 @@ struct SetlistEntry: Identifiable, Codable {
         trimStartSeconds = try c.decodeIfPresent(Double.self, forKey: .trimStartSeconds)
         trimEndSeconds = try c.decodeIfPresent(Double.self, forKey: .trimEndSeconds)
         restorationOverride = try c.decodeIfPresent(Bool.self, forKey: .restorationOverride)
+        upcomingOverride = try c.decodeIfPresent(UpcomingOverride.self, forKey: .upcomingOverride)
         autoGapApplied = false
     }
 }
@@ -293,6 +295,12 @@ final class SetlistManager: ObservableObject {
 
     func clearTrim(for id: UUID) { setTrim(start: nil, end: nil, for: id) }
 
+    func setUpcomingOverride(_ o: UpcomingOverride?, for id: UUID) {
+        guard let i = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[i].upcomingOverride = (o?.isEmpty ?? true) ? nil : o
+        save()
+    }
+
     func setPluginConfiguration(_ configID: UUID?, for ids: Set<UUID>) {
         for id in ids {
             guard let i = entries.firstIndex(where: { $0.id == id }) else { continue }
@@ -352,9 +360,46 @@ final class SetlistManager: ObservableObject {
         }
         entries = decoded
         loadMissingDurations()
+        reloadEmptyMetadata()
         if !UserDefaults.standard.bool(forKey: "setlistGroupingMigrationV1") {
             loadMissingGroupings()
         }
+    }
+
+    /// Re-reads tags from disk for the given entries, replacing whatever is in the row.
+    /// Tags are otherwise read once, at drop time — a file on a sleeping external volume
+    /// returns nothing and that empty result is what gets saved. This is the retry.
+    func reloadMetadata(ids: [UUID]) {
+        for id in ids {
+            guard let idx = entries.firstIndex(where: { $0.id == id }) else { continue }
+            let url = entries[idx].fileURL
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let track = await SetlistManager.readMetadata(from: url)
+                guard let i = self.entries.firstIndex(where: { $0.id == id }) else { return }
+                // A read off a still-sleeping volume comes back empty. Never let that
+                // overwrite tags the row already has — a failed retry should change nothing.
+                let old = self.entries[i].track
+                let readFoundNothing = track.artist.isEmpty && track.genre.isEmpty
+                let rowHasTags = !old.artist.isEmpty || !old.genre.isEmpty
+                guard !(readFoundNothing && rowHasTags) else { return }
+                self.entries[i].track = track
+                self.save()
+            }
+        }
+    }
+
+    /// A row whose artist and genre are both empty never got a successful read — either the
+    /// drop-time placeholder was never replaced, or the read came back empty off a cold volume.
+    /// Re-read those on every launch so an affected setlist heals itself, the way durations do.
+    /// ponytail: a genuinely untagged file re-reads each launch too; one asset load, same cost
+    /// as loadMissingDurations. Add a "no tags here" marker only if that shows up in profiles.
+    private func reloadEmptyMetadata() {
+        let ids = entries
+            .filter { $0.track.artist.isEmpty && $0.track.genre.isEmpty }
+            .map { $0.id }
+        guard !ids.isEmpty else { return }
+        reloadMetadata(ids: ids)
     }
 
     private func loadMissingGroupings() {

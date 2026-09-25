@@ -7,4 +7,4 @@ MIT — see `LICENSE.txt`.
 Update by re-copying from upstream, never by editing in place; the ports are only comparable to each
 other while they stay identical. `TDRestoration.mm` is the only file that should differ between hosts.
 
-Fetched at commit `ebb4228` (2026-09-05).
+Fetched at tag `v1.0.1`, commit `74874bb` (2026-09-17).

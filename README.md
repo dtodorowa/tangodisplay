@@ -49,7 +49,7 @@ A native macOS menu-bar app that shows a clean, fullscreen dancer display on an 
 ### Option A — Download pre-built app (easiest)
 
 1. Go to the [Releases](https://github.com/richardsladetdj-creator/TangoDisplay/releases) page
-2. Download `TangoDisplay-v3.31.0-universal.zip` (works on both Apple Silicon and Intel Macs)
+2. Download `TangoDisplay-v3.33.0-universal.zip` (works on both Apple Silicon and Intel Macs)
 3. Unzip and drag `TangoDisplay.app` to your `/Applications` folder
 4. **Right-click › Open** on first launch (required because the app is ad-hoc signed, not notarised)
 5. Grant the permissions macOS requests (see [Permissions](#permissions) below)
@@ -135,6 +135,16 @@ Key design decisions:
 ---
 
 ## Changelog
+
+### v3.33.0
+- **Reload Track Info:** right-click a setlist row — or a selection — and choose **Reload Track Info** to re-read the tags from the file. Fixes rows that show a filename with no artist or genre because the file sat on a sleeping, slow or network drive when it was dropped in. Rows that never got a successful read are retried automatically at every launch. Worth fixing: a track with no genre counts as a cortina under the deny-list rule, so a failed tag read also throws off tanda counting and the "Coming Up" preview.
+- **Plugin tweaks survive the set:** with a default plugin configuration set, the chain was re-applied on every track load, wiping any adjustment made live. It now re-applies only when the configuration actually changes.
+- **ShellacFilters v1.0.1:** re-vendored declick and dehum cores. The dehum detector now runs on a decimated signal — far less work per detection pass, same result — and declick no longer allocates ~2.1 MB per channel on the audio thread. The upstream version is shown in the Restoration popover.
+- **Output device:** pick your interface by name rather than **System Default** — on System Default the player follows whatever macOS calls the default, so plugging in headphones moves its output. If the chosen device disconnects, playback stops with an **Audio Device Unavailable** alert offering Retry; it never silently falls back to another output.
+
+### v3.32.0
+- **Edit Upcoming Info:** right-click a cortina in the setlist and choose **Edit Upcoming Info…** to type the artist, singer and year shown in the "Coming Up" preview during that cortina — for mixed tandas where the first track's own details would misdescribe what's next. Year is free text ("1941-43"). Blank fields fall back to the real details, and editing the cortina that is already playing updates the display immediately. Built-in player only.
+- **Playback survives sleep:** waking the Mac no longer quits TangoDisplay or leaves it silent. The audio engine is restarted with retries while the output device comes back, exclusive (hog) mode is re-claimed, and if the device does not return playback stops with an **Audio Device Unavailable** alert offering Retry.
 
 ### v3.31.0
 - **Shellac Restoration:** new Restoration button in the Setlist toolbar, with Declick and Dehum filters for 78 rpm transfers, running ahead of the equaliser. Off by default. Per-track overrides (right-click a row) outrank both the master switch and the cortina skip, so a single shellac transfer can be repaired in an otherwise unrestored set. The filters are the DSP cores from [ShellacFilters](https://github.com/shaforostoff/shellacfilters) by Nick Shaforostov (MIT), built on the [Airwindows](https://www.airwindows.com) framework by Chris Johnson; the Audio Unit wrapper is adapted from [EmbraceNG](https://github.com/shaforostoff/EmbraceNG) (© 2024 Ricci Adams). See [Credits](#credits).
@@ -481,7 +491,7 @@ Key design decisions:
 - **New: Fade controls** — two one-click fade buttons: **Fade & Stop** (smooth fade to silence, then stop) and **Fade & Continue** (fade out, skip to next track, fade back in). Configurable fade duration (1–15 s, default 5 s). Ideal for cortina transitions.
 - **New: Accidental-stop protection** — stopping playback requires two deliberate clicks (arm → confirm within ~3 s) to prevent mis-clicks mid-tanda.
 - **New: 5-Band Equaliser** — ±12 dB per band (60 Hz low shelf, 250 Hz, 1 kHz, 4 kHz peaking, 12 kHz high shelf). Settings persist across sessions. One-click Flat reset.
-- **New: Audio output routing** — choose any macOS output device (e.g. a DJ audio interface) from Player Settings. Falls back to system default if the selected device disconnects.
+- **New: Audio output routing** — choose any macOS output device (e.g. a DJ audio interface) from Player Settings. If the selected device disconnects, playback stops with an **Audio Device Unavailable** alert offering Retry.
 - **New: Track info toggles** — show or hide Year, Time, Comments, and Album Artist columns in setlist rows from Player Settings.
 - **New: Export to Apple Music** — export the current setlist to a new Apple Music playlist with one click from the setlist toolbar.
 - **New: Setlist footer** — live total duration and projected end time (e.g. "Ends ~23:45") calculated from remaining queued tracks.

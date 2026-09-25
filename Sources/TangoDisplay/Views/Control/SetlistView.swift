@@ -547,9 +547,11 @@ struct SetlistView: View {
     @State private var scrollTrigger: UUID? = nil
     @State private var showLastTandaWarning = false
     @State private var pendingRepeatID: UUID?
+    @State private var editingUpcoming: SetlistEntry?
     @State private var pasteMonitor: Any? = nil
     @State private var hogConflictWarning = false
     @State private var hogDeviceStolenAlertShown = false
+    @State private var engineStalledAlertShown = false
     @State private var dropFeedback: String? = nil
 
     // Seed the @State mirrors from the player so the very first body render
@@ -663,6 +665,13 @@ struct SetlistView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Another app has taken exclusive access of the audio output device, so playback was paused. Release the exclusive access in that app, then tap Retry.")
+        }
+        .onReceive(player.$engineStalled) { if $0 { engineStalledAlertShown = true } }
+        .alert("Audio Device Unavailable", isPresented: $engineStalledAlertShown) {
+            Button("Retry") { player.retryOutputDevice() }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The audio output device did not come back, so playback was stopped. Check the device is connected and powered on, then tap Retry.")
         }
         .alert("Save Setlist Report", isPresented: $showSaveReportDialog) {
             TextField("Setlist name", text: $saveReportName)
@@ -872,6 +881,9 @@ struct SetlistView: View {
             Button("Cancel", role: .cancel) { pendingRepeatID = nil }
         } message: {
             Text("This track is marked Stop after Playing. Remove that and repeat it instead?")
+        }
+        .sheet(item: $editingUpcoming) { entry in
+            UpcomingInfoEditor(entry: entry)
         }
     }
 
@@ -1213,6 +1225,14 @@ struct SetlistView: View {
                     setlist.setRepeat(!e.repeatTrack, for: id)
                 }
             }
+            Divider()
+            Button("Edit Upcoming Info…") { editingUpcoming = e }
+            if e.upcomingOverride != nil {
+                Button("Clear Upcoming Info") {
+                    setlist.setUpcomingOverride(nil, for: id)
+                    appState.applyUpcomingOverride(nil, forCortinaEntry: id)
+                }
+            }
         }
         // Track start & end time: single track, built-in player only (only it can enforce the trim)
         if targets.count == 1, let id = targets.first,
@@ -1254,6 +1274,10 @@ struct SetlistView: View {
                     }
                 }
             }
+        }
+        Divider()
+        Button(targets.count == 1 ? "Reload Track Info" : "Reload Track Info for Selection") {
+            setlist.reloadMetadata(ids: Array(targets))
         }
         Divider()
         let singleEntry = targets.count == 1 ? setlist.entries.first(where: { targets.contains($0.id) }) : nil
@@ -1789,6 +1813,12 @@ struct SetlistRowView: View {
                     Image(systemName: "flag.fill")
                         .font(.system(size: 11))
                         .foregroundColor(.red)
+                }
+                if entry.upcomingOverride != nil {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 11))
+                        .foregroundColor(.accentColor)
+                        .help("Upcoming info edited")
                 }
                 if let name = configurationName {
                     Text(name)

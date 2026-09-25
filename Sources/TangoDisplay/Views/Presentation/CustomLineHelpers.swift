@@ -17,7 +17,8 @@ private let customPlaceholderRegex = try! NSRegularExpression(pattern: "\\{([A-Z
 /// Field values are run through the profile's transforms / genre label mapping so
 /// they match how the built-in lines render. Singer honours `profile.singerSource`.
 func resolveCustomPlaceholders(_ template: String, track: Track?,
-                               profile: AppearanceProfile, settings: AppSettings) -> String {
+                               profile: AppearanceProfile, settings: AppSettings,
+                               override: UpcomingOverride? = nil) -> String {
     guard let track = track else {
         // No track: strip all placeholders.
         let range = NSRange(template.startIndex..., in: template)
@@ -38,6 +39,13 @@ func resolveCustomPlaceholders(_ template: String, track: Track?,
         values["singer"] = settings.transform(rawSinger, for: singerTrackInfoField(profile.singerSource))
     } else {
         values["singer"] = ""
+    }
+
+    // Cortina "Coming Up" override wins over the real metadata, verbatim.
+    if let o = override {
+        if let a = o.artistValue { values["artist"] = a }
+        if let s = o.singerValue { values["singer"] = s }
+        if let y = o.yearValue   { values["year"]   = y }
     }
 
     let ns = template as NSString

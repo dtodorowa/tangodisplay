@@ -1,5 +1,6 @@
 import SwiftUI
 import TangoDisplayCore
+import TangoDisplayObjC
 
 /// Controls for the ShellacFilters declick and dehum filters.
 ///
@@ -50,10 +51,13 @@ struct RestorationPopoverView: View {
             dehumSection
             Divider()
 
-            Text("Declick and Dehum by Nick Shaforostov — MIT")
+            Text("Declick and Dehum by Nick Shaforostov — MIT\nShellacFilters v\(TDShellacFiltersVersion)")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: .center)
+                .help("The upstream release these filters were built from. They ship compiled "
+                    + "into TangoDisplay, so they update with the app.")
         }
         .padding(12)
         .frame(width: 340)
