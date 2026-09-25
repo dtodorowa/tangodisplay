@@ -129,6 +129,7 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
         var loadGeneration: Int = 0
         var loadTask: Task<Void, Never>?
         var isApplyingPreset: Bool = false
+        var stateSaveWork: DispatchWorkItem?
     }
 
     private var slotRuntimes: [UUID: SlotRuntime] = [:]
@@ -1448,6 +1449,23 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
         recomputeChainStatus()
     }
 
+    /// Whether the plugin ships an editor of its own, as opposed to relying on the
+    /// host to draw its parameters.
+    ///
+    /// For V2 units — including the out-of-process bridge — `kAudioUnitProperty_CocoaUI`
+    /// is the only honest answer; `providesUserInterface` is true for anything once a
+    /// view has been requested. V3 units aren't wrapped that way, so their own flag
+    /// stands, read before any view is requested.
+    private static func pluginProvidesOwnUI(_ avUnit: AVAudioUnit) -> Bool {
+        let className = String(describing: type(of: avUnit.auAudioUnit))
+        guard className.contains("V2") else { return avUnit.auAudioUnit.providesUserInterface }
+        var size: UInt32 = 0
+        var writable: DarwinBoolean = false
+        let status = AudioUnitGetPropertyInfo(avUnit.audioUnit, kAudioUnitProperty_CocoaUI,
+                                              kAudioUnitScope_Global, 0, &size, &writable)
+        return status == noErr && size > 0
+    }
+
     func openPluginWindow(slotId: UUID) {
         guard let runtime = slotRuntimes[slotId], let avUnit = runtime.avUnit else { return }
         if let existing = runtime.pluginWindow {
@@ -1455,10 +1473,27 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
             return
         }
         let title = settings.audioUnitPluginChain.first(where: { $0.id == slotId })?.selection.name ?? "Plugin"
+        // Must be read *before* requestViewController: for a V2 unit the hosting
+        // service builds a RemoteAUv2ContainerViewController around Apple's generic
+        // view on demand, and providesUserInterface flips to true once it exists —
+        // so asking afterwards always says yes, even for a plugin with no UI at all.
+        let pluginHasOwnUI = Self.pluginProvidesOwnUI(avUnit)
         avUnit.auAudioUnit.requestViewController { [weak self] viewController in
             DispatchQueue.main.async {
                 guard let self, let runtime = self.slotRuntimes[slotId] else { return }
-                guard let vc = viewController else {
+                // Plugins with no Cocoa UI (Airwindows, most older V2 effects) expect
+                // the host to draw their parameters. In-process they answer nil here.
+                // Out-of-process — how everything off the allowlist loads — the hosting
+                // service instead returns a RemoteAUv2ContainerViewController wrapping
+                // Apple's generic view, whose NSView is 1x1 and stays 1x1. Sizing the
+                // window from that is what produced the one-pixel sliver, so when the
+                // unit disclaims a UI we draw the parameter tree ourselves and let the
+                // remote container stand only as a last resort.
+                let pluginSuppliedVC = pluginHasOwnUI ? viewController : nil
+                let genericVC = pluginSuppliedVC == nil
+                    ? GenericPluginEditorView.makeViewController(for: avUnit.auAudioUnit)
+                    : nil
+                guard let vc = pluginSuppliedVC ?? genericVC ?? viewController else {
                     runtime.status = .failed(title, reason: "Plugin editor unavailable")
                     self.slotStatuses[slotId] = runtime.status
                     self.recomputeChainStatus()
@@ -1639,10 +1674,23 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
                     }
 
                     if !appliedConfig {
+                        let slotSettings = self.settings.audioUnitPluginChain.first(where: { $0.id == slotId })
+                        // Settings the user dialled in by hand outrank the last-used
+                        // preset: they were made later, and by hand.
+                        if let saved = slotSettings?.savedState {
+                            self.applySlotState(
+                                PluginSlotState(slotID: slotId,
+                                                componentSubType: selection.componentSubType,
+                                                auState: saved,
+                                                isEnabled: true),
+                                to: avUnit,
+                                runtime: runtime
+                            )
+                        }
                         // Restore last-used preset for this slot.
-                        let savedName = self.settings.audioUnitPluginChain
-                            .first(where: { $0.id == slotId })?.lastUsedPresetName
-                        if let savedName, let match = all.first(where: { $0.name == savedName }) {
+                        let savedName = slotSettings?.lastUsedPresetName
+                        if slotSettings?.savedState == nil,
+                           let savedName, let match = all.first(where: { $0.name == savedName }) {
                             runtime.isApplyingPreset = true
                             try? manager.applyPreset(match, to: avUnit, originator: runtime.paramObserverToken)
                             runtime.activePresetID = match.id
@@ -1675,6 +1723,7 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
                     runtime.activePresetID = nil
                     self.slotActivePresetIDs.removeValue(forKey: slotId)
                     self.updateSlotPresetName(slotId: slotId, name: nil)
+                    self.scheduleSlotStateSave(slotId: slotId)
                 }
             })
         }
@@ -1686,8 +1735,28 @@ final class LocalPlayerSource: NSObject, ObservableObject, MusicPlayerSource {
                 runtime.activePresetID = nil
                 self.slotActivePresetIDs.removeValue(forKey: slotId)
                 self.updateSlotPresetName(slotId: slotId, name: nil)
+                self.scheduleSlotStateSave(slotId: slotId)
             }
         }
+    }
+
+    /// Persist the slot's live settings shortly after the user stops moving a
+    /// control. Debounced because a slider drag fires the observer per frame, and
+    /// encoding fullState on every one of those is wasted work during playback.
+    private func scheduleSlotStateSave(slotId: UUID) {
+        guard let runtime = slotRuntimes[slotId] else { return }
+        runtime.stateSaveWork?.cancel()
+        let work = DispatchWorkItem { [weak self, weak runtime] in
+            guard let self, let runtime, !runtime.isApplyingPreset,
+                  let unit = runtime.avUnit,
+                  let fullState = unit.auAudioUnit.fullState,
+                  let encoded = try? AUStateCodec.encode(fullState),
+                  let index = self.settings.audioUnitPluginChain.firstIndex(where: { $0.id == slotId })
+            else { return }
+            self.settings.audioUnitPluginChain[index].savedState = encoded
+        }
+        runtime.stateSaveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75, execute: work)
     }
 
     private func teardownSlotObservers(_ runtime: SlotRuntime) {

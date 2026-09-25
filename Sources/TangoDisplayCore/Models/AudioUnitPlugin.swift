@@ -55,17 +55,23 @@ public struct AudioUnitChainSlot: Codable, Equatable, Identifiable {
     public var selection: AudioUnitPluginSelection
     public var isEnabled: Bool
     public var lastUsedPresetName: String?
+    /// The slot's live settings, base64-encoded fullState, saved whenever the user
+    /// moves a control and restored on next launch — so a chain behaves like the
+    /// equaliser rather than resetting to plugin defaults.
+    public var savedState: String?
 
     public init(
         id: UUID = UUID(),
         selection: AudioUnitPluginSelection,
         isEnabled: Bool = true,
-        lastUsedPresetName: String? = nil
+        lastUsedPresetName: String? = nil,
+        savedState: String? = nil
     ) {
         self.id = id
         self.selection = selection
         self.isEnabled = isEnabled
         self.lastUsedPresetName = lastUsedPresetName
+        self.savedState = savedState
     }
 }
 

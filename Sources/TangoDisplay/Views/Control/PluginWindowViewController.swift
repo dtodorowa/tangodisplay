@@ -54,8 +54,10 @@ final class PluginWindowViewController: NSViewController {
         addChild(pluginVC)
         let effectView = pluginVC.view
         let natural = effectView.frame.size
-        let naturalW = natural.width  > 0 ? natural.width  : 600
-        let naturalH = natural.height > 0 ? natural.height : 400
+        // Not just > 0: a remote plugin view reports 1x1 until the hosting
+        // service connects, and a window built to that size is unusable.
+        let naturalW = natural.width  >= 80 ? natural.width  : 600
+        let naturalH = natural.height >= 40 ? natural.height : 400
 
         let contentSize = NSSize(width: naturalW, height: naturalH + barHeight)
         view.setFrameSize(contentSize)
@@ -151,7 +153,9 @@ final class PluginWindowViewController: NSViewController {
 
     private func adoptPreferredContentSize() {
         let size = pluginVC.preferredContentSize
-        guard size.width > 0, size.height > 0 else { return }
+        // Floors, not just > 0: a view mid-layout can publish a few points and
+        // leave the window a sliver with no visible grip to drag it back.
+        guard size.width >= 80, size.height >= 40 else { return }
         // Treat preferredContentSize as a frame request: write it into the
         // plugin's NSView so the rest of the pipeline (frameDidChange)
         // handles the window resize via the same code path.
@@ -174,7 +178,10 @@ final class PluginWindowViewController: NSViewController {
             width:  max(root.width,  extent.width),
             height: max(root.height, extent.height)
         )
-        guard target.width > 0, target.height > 0 else { return }
+        // Same floors as adoptPreferredContentSize: a hosted SwiftUI view reports
+        // a near-zero frame mid-layout, and following it collapses the window to a
+        // sliver the user can't even grab to resize.
+        guard target.width >= 80, target.height >= 40 else { return }
 
         let content = window.contentRect(forFrameRect: window.frame).size
         let currentPluginH = max(0, content.height - barHeight)
